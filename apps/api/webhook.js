@@ -309,6 +309,49 @@ Continue the conversation with your next message.`;
           "❌ Error sending WhatsApp reply via Twilio:",
           twilioErr?.response?.data || twilioErr
         );
+
+        // Handle Twilio rate limiting and other errors by creating a system message
+        let systemMessageBody = "";
+        let errorCode = "";
+
+        if (twilioErr?.code === 63038) {
+          // Daily message limit exceeded
+          errorCode = twilioErr.code;
+          systemMessageBody = `❌ Failed to send AI reply via WhatsApp: ${twilioErr.message}. Customer may not have received the automated response.`;
+        } else if (twilioErr?.status === 429) {
+          // Rate limiting
+          errorCode = twilioErr.code || "429";
+          systemMessageBody = `❌ Failed to send AI reply via WhatsApp: Rate limit exceeded. Customer may not have received the automated response.`;
+        } else {
+          // Generic Twilio error
+          errorCode = twilioErr?.code || "UNKNOWN";
+          systemMessageBody = `❌ Failed to send AI reply via WhatsApp. Customer may not have received the automated response.`;
+        }
+
+        if (errorCode) {
+          systemMessageBody += ` Error Code: ${errorCode}`;
+        }
+
+        // Store system message in Firestore to notify about AI reply failure
+        try {
+          const systemMsgId = `system-ai-twilio-error-${Date.now()}`;
+          const systemMsgRef = convRef.collection("messages").doc(systemMsgId);
+          await systemMsgRef.set({
+            from: "System",
+            role: "system",
+            body: systemMessageBody,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            error: {
+              code: errorCode,
+              message: twilioErr?.message || "Unknown Twilio error",
+              status: twilioErr?.status
+            }
+          });
+
+          console.log(`⚠️ Stored system error message for AI reply in conversation ${convId}: "${systemMessageBody}"`);
+        } catch (systemMsgErr) {
+          console.error("❌ Failed to store system error message for AI reply:", systemMsgErr);
+        }
       }
     }
 
@@ -408,6 +451,49 @@ app.post("/agent/send-message", async (req, res) => {
           "❌ Error sending agent WhatsApp message via Twilio:",
           twilioErr?.response?.data || twilioErr
         );
+
+        // Handle Twilio rate limiting and other errors by creating a system message
+        let systemMessageBody = "";
+        let errorCode = "";
+
+        if (twilioErr?.code === 63038) {
+          // Daily message limit exceeded
+          errorCode = twilioErr.code;
+          systemMessageBody = `❌ Failed to send agent message via WhatsApp: ${twilioErr.message}. Customer may not have received your reply.`;
+        } else if (twilioErr?.status === 429) {
+          // Rate limiting
+          errorCode = twilioErr.code || "429";
+          systemMessageBody = `❌ Failed to send agent message via WhatsApp: Rate limit exceeded. Customer may not have received your reply.`;
+        } else {
+          // Generic Twilio error
+          errorCode = twilioErr?.code || "UNKNOWN";
+          systemMessageBody = `❌ Failed to send agent message via WhatsApp. Customer may not have received your reply.`;
+        }
+
+        if (errorCode) {
+          systemMessageBody += ` Error Code: ${errorCode}`;
+        }
+
+        // Store system message in Firestore to notify the agent
+        try {
+          const systemMsgId = `system-twilio-error-${Date.now()}`;
+          const systemMsgRef = convRef.collection("messages").doc(systemMsgId);
+          await systemMsgRef.set({
+            from: "System",
+            role: "system",
+            body: systemMessageBody,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            error: {
+              code: errorCode,
+              message: twilioErr?.message || "Unknown Twilio error",
+              status: twilioErr?.status
+            }
+          });
+
+          console.log(`⚠️ Stored system error message in conversation ${convId}: "${systemMessageBody}"`);
+        } catch (systemMsgErr) {
+          console.error("❌ Failed to store system error message:", systemMsgErr);
+        }
       }
     }
 
