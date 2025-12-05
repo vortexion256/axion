@@ -292,6 +292,35 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
         .collection("tickets")
         .doc(ticketId);
 
+      // Check for previous tickets from this customer
+      const previousTicketsQuery = await db
+        .collection("companies")
+        .doc(tenantId)
+        .collection("tickets")
+        .where("customerId", "==", from)
+        .where("status", "in", ["closed", "pending"])
+        .orderBy("updatedAt", "desc")
+        .limit(3)
+        .get();
+
+      const previousTicketsCount = previousTicketsQuery.size;
+      let customerHistorySummary = "";
+
+      if (previousTicketsCount > 0) {
+        customerHistorySummary = `Returning customer with ${previousTicketsCount} previous interaction${previousTicketsCount !== 1 ? 's' : ''}. `;
+        const lastInteraction = previousTicketsQuery.docs[0].data();
+        const lastInteractionDate = lastInteraction.updatedAt?.toDate?.() || new Date(lastInteraction.updatedAt);
+        const daysSince = Math.floor((Date.now() - lastInteractionDate.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (daysSince === 0) {
+          customerHistorySummary += "Last interaction was today.";
+        } else if (daysSince === 1) {
+          customerHistorySummary += "Last interaction was yesterday.";
+        } else {
+          customerHistorySummary += `Last interaction was ${daysSince} days ago.`;
+        }
+      }
+
       const initialTicketData = {
         customerId: from,
         status: "open",
@@ -300,6 +329,7 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         channel: "whatsapp",
         aiEnabled: true, // AI is enabled by default for new tickets
+        customerHistorySummary: customerHistorySummary || null,
       };
 
       await ticketRef.set(initialTicketData);
@@ -308,6 +338,17 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
       await assignTicketToRespondent(ticketRef, tenantId, company);
 
       ticketDocData = initialTicketData;
+
+      // Add a system message about customer history if they have previous interactions
+      if (customerHistorySummary) {
+        const historyMsgRef = ticketRef.collection("messages").doc(`system-history-${Date.now()}`);
+        await historyMsgRef.set({
+          from: "System",
+          role: "system",
+          body: `👋 ${customerHistorySummary}\n\n💡 Check the customer history section above for previous conversations and context.`,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
     }
 
     // If ticket doc somehow had no data loaded, fetch it
