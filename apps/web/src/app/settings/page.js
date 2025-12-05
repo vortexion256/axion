@@ -229,7 +229,7 @@ export default function SettingsPage() {
                   </div>
                   <small style={{ color: '#666', display: 'block', marginTop: '0.5rem' }}>
                     Copy this URL to your Twilio WhatsApp webhook configuration.
-                    <br/><strong>Note:</strong> Make sure your ngrok tunnel is running for this URL to work.
+                    <br/><strong>Note:</strong> This is your publicly accessible webhook URL for Twilio configuration.
                     <br/><em>Debug: API_BASE_URL = {process.env.NEXT_PUBLIC_API_BASE_URL || 'NOT SET'}</em>
                   </small>
                 </div>

@@ -13,6 +13,8 @@ import {
   updateDoc,
   deleteDoc,
   getDocs,
+  where,
+  limit,
 } from "firebase/firestore";
 
 export default function InboxPage() {
@@ -40,10 +42,22 @@ export default function InboxPage() {
     const convRef = collection(db, "companies", tenantId, "conversations");
     const q = query(convRef, orderBy("lastUpdated", "desc"));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setConversations(
-        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const conversationsWithErrors = await Promise.all(
+        snapshot.docs.map(async (doc) => {
+          const convData = { id: doc.id, ...doc.data() };
+
+          // Check if this conversation has any error messages
+          const messagesRef = collection(db, "companies", tenantId, "conversations", doc.id, "messages");
+          const errorQuery = query(messagesRef, where("error", "==", true), limit(1));
+          const errorSnapshot = await getDocs(errorQuery);
+
+          convData.hasErrors = !errorSnapshot.empty;
+          return convData;
+        })
       );
+
+      setConversations(conversationsWithErrors);
     });
 
     return () => unsubscribe();
@@ -72,6 +86,9 @@ export default function InboxPage() {
 
   const apiBase =
     process.env.NEXT_PUBLIC_API_BASE_URL || "https://ellen-nonabridgable-samual.ngrok-free.dev";
+
+  console.log("API Base URL:", apiBase);
+  console.log("NEXT_PUBLIC_API_BASE_URL:", process.env.NEXT_PUBLIC_API_BASE_URL);
 
   async function handleToggleAI() {
     if (!selectedConv) return;
@@ -113,6 +130,13 @@ export default function InboxPage() {
 
     try {
       setIsSending(true);
+      console.log("Sending to API:", `${apiBase}/agent/send-message`);
+      console.log("Request data:", {
+        convId: selectedConv.id,
+        body: agentMessage.trim(),
+        tenantId
+      });
+
       const resp = await fetch(`${apiBase}/agent/send-message`, {
         method: "POST",
         headers: {
@@ -125,9 +149,12 @@ export default function InboxPage() {
         }),
       });
 
+      console.log("Response status:", resp.status);
+
       if (!resp.ok) {
         const errText = await resp.text();
         console.error("Error sending agent message:", errText);
+        console.error("Response status:", resp.status);
         alert("Failed to send message. Check API logs for details.");
       } else {
         setAgentMessage("");
@@ -209,16 +236,25 @@ export default function InboxPage() {
                 backgroundColor: selectedConv?.id === conv.id ? "#e0f7fa" : "",
                 borderRadius: "4px",
                 marginBottom: "0.25rem",
+                border: conv.hasErrors ? "2px solid #f44336" : "1px solid transparent",
               }}
               onClick={() => setSelectedConv(conv)}
             >
-              <div style={{ fontWeight: 500 }}>
+              <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 {conv.participants?.[0] || "Unknown"}
+                {conv.hasErrors && (
+                  <span style={{ color: "#f44336", fontSize: "0.8rem" }}>⚠️</span>
+                )}
               </div>
               <div style={{ fontSize: "0.75rem", color: "#666" }}>
                 {conv.lastUpdated
                   ? new Date(conv.lastUpdated.seconds * 1000).toLocaleString()
                   : ""}
+                {conv.hasErrors && (
+                  <span style={{ color: "#f44336", marginLeft: "0.5rem" }}>
+                    (Delivery Error)
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -296,9 +332,23 @@ export default function InboxPage() {
         >
           {selectedConv ? (
             messages.map((msg) => (
-              <div key={msg.id} style={{ marginBottom: "0.5rem" }}>
-                <strong>{msg.from}</strong>:{" "}
+              <div key={msg.id} style={{
+                marginBottom: "0.5rem",
+                padding: msg.error ? "0.75rem" : "0.25rem",
+                borderRadius: "4px",
+                backgroundColor: msg.error ? "#ffeaea" : "transparent",
+                border: msg.error ? "1px solid #f44336" : "none",
+                color: msg.error ? "#d32f2f" : "inherit"
+              }}>
+                <strong style={{ color: msg.from === "System" ? "#ff9800" : "inherit" }}>
+                  {msg.from}
+                </strong>:{" "}
                 {msg.body || JSON.stringify(msg.payload)}
+                {msg.errorCode && (
+                  <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", color: "#666" }}>
+                    Error Code: {msg.errorCode}
+                  </div>
+                )}
               </div>
             ))
           ) : (

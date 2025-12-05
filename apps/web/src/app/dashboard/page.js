@@ -4,19 +4,49 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../lib/auth-context';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 export default function DashboardPage() {
-  const { user, company, loading, logout } = useAuth();
+  const { user, company, loading, logout, clearTwilioErrors } = useAuth();
   const router = useRouter();
   const [testMessage, setTestMessage] = useState('');
   const [testResult, setTestResult] = useState(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [errorConversationCount, setErrorConversationCount] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    const countErrorConversations = async () => {
+      if (!company?.id) return;
+
+      try {
+        const conversationsRef = collection(db, 'companies', company.id, 'conversations');
+        const conversationsSnap = await getDocs(conversationsRef);
+
+        let errorCount = 0;
+        for (const convDoc of conversationsSnap.docs) {
+          const messagesRef = collection(db, 'companies', company.id, 'conversations', convDoc.id, 'messages');
+          const errorQuery = query(messagesRef, where('error', '==', true));
+          const errorSnap = await getDocs(errorQuery);
+          if (!errorSnap.empty) {
+            errorCount++;
+          }
+        }
+
+        setErrorConversationCount(errorCount);
+      } catch (error) {
+        console.error('Error counting error conversations:', error);
+      }
+    };
+
+    countErrorConversations();
+  }, [company?.id]);
 
   const handleLogout = async () => {
     try {
@@ -121,6 +151,71 @@ export default function DashboardPage() {
         <div style={{ maxWidth: '800px', margin: '0 auto' }}>
           <h2 style={{ marginBottom: '1rem', color: '#333' }}>Dashboard</h2>
 
+          {/* Twilio Error Alert */}
+          {company.hasTwilioErrors && (
+            <div style={{
+              backgroundColor: '#ffeaea',
+              border: '1px solid #f44336',
+              padding: '1.5rem',
+              borderRadius: '8px',
+              marginBottom: '2rem'
+            }}>
+              <h3 style={{ marginTop: 0, color: '#d32f2f', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                ⚠️ Twilio Account Issue Detected
+              </h3>
+              <div style={{ color: '#d32f2f', marginBottom: '1rem' }}>
+                <strong>Last Error:</strong> {company.lastTwilioError?.message || 'Unknown error'}
+                {company.lastTwilioError?.code && (
+                  <div style={{ fontSize: '14px', marginTop: '0.5rem' }}>
+                    <strong>Error Code:</strong> {company.lastTwilioError.code}
+                  </div>
+                )}
+                {company.lastTwilioError?.timestamp && (
+                  <div style={{ fontSize: '14px', marginTop: '0.5rem', color: '#666' }}>
+                    <strong>Time:</strong> {new Date(company.lastTwilioError.timestamp.seconds * 1000).toLocaleString()}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button
+                  onClick={() => window.location.href = '/settings'}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#1976d2',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Check Settings
+                </button>
+                <button
+                  onClick={async () => {
+                    console.log('Clearing Twilio errors...');
+                    try {
+                      await clearTwilioErrors();
+                      console.log('Twilio errors cleared successfully');
+                    } catch (error) {
+                      console.error('Error clearing errors:', error);
+                      alert('Failed to clear errors. Please try again.');
+                    }
+                  }}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#4caf50',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Mark as Resolved
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Status Card */}
           <div style={{
             backgroundColor: 'white',
@@ -130,9 +225,17 @@ export default function DashboardPage() {
             marginBottom: '2rem'
           }}>
             <h3 style={{ marginTop: 0, color: '#333' }}>Setup Status</h3>
-            <div style={{ marginBottom: '1rem', fontSize: '14px', color: '#666' }}>
+              <div style={{ marginBottom: '1rem', fontSize: '14px', color: '#666' }}>
               <strong>Company ID:</strong> {company.id}<br/>
               <strong>Webhook URL:</strong> {`${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ellen-nonabridgable-samual.ngrok-free.dev'}/webhook/whatsapp/${company.id}`}
+              {company.hasTwilioErrors && (
+                <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#ffeaea', borderRadius: '4px', border: '1px solid #f44336' }}>
+                  <strong style={{ color: '#d32f2f' }}>⚠️ Active Delivery Issues</strong><br/>
+                  <span style={{ fontSize: '12px', color: '#666' }}>
+                    Some messages are failing to send. Check your Twilio account status and webhook configuration.
+                  </span>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
@@ -175,6 +278,23 @@ export default function DashboardPage() {
                 </div>
                 <div style={{ fontSize: '14px', marginTop: '0.5rem' }}>
                   {company.twilioPhoneNumber ? '✓ Configured' : '⚠ Not configured'}
+                </div>
+              </div>
+
+              <div style={{
+                padding: '1rem',
+                border: `2px solid ${errorConversationCount === 0 ? '#4caf50' : '#f44336'}`,
+                borderRadius: '4px',
+                backgroundColor: errorConversationCount === 0 ? '#e8f5e8' : '#ffeaea'
+              }}>
+                <div style={{ fontWeight: 'bold', color: errorConversationCount === 0 ? '#4caf50' : '#f44336' }}>
+                  Message Delivery
+                </div>
+                <div style={{ fontSize: '14px', marginTop: '0.5rem' }}>
+                  {errorConversationCount === 0
+                    ? '✓ All messages delivered'
+                    : `⚠ ${errorConversationCount} conversation${errorConversationCount > 1 ? 's' : ''} with delivery errors`
+                  }
                 </div>
               </div>
             </div>

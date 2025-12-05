@@ -95,6 +95,28 @@ Continue the conversation with your next message.`,
     }
   };
 
+  const clearTwilioErrors = async () => {
+    if (!company) return;
+
+    try {
+      const companyRef = doc(db, 'companies', company.id);
+      await updateDoc(companyRef, {
+        hasTwilioErrors: false,
+        lastTwilioError: null,
+        updatedAt: new Date(),
+      });
+
+      setCompany({
+        ...company,
+        hasTwilioErrors: false,
+        lastTwilioError: null
+      });
+    } catch (error) {
+      console.error('Error clearing Twilio errors:', error);
+      throw error;
+    }
+  };
+
   const value = {
     user,
     company,
@@ -102,6 +124,7 @@ Continue the conversation with your next message.`,
     signInWithGoogle,
     logout,
     updateCompanySettings,
+    clearTwilioErrors,
   };
 
   return (
@@ -118,4 +141,5 @@ export function useAuth() {
   }
   return context;
 }
+
 
