@@ -355,7 +355,7 @@ Continue the conversation with your next message.`;
       }
     }
 
-    res.sendStatus(200);
+    res.status(200).end();
   } catch (err) {
     console.error("❌ Error in webhook:", err);
     res.status(500).json({ error: "Internal Server Error" });
