@@ -1,4 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Ignore Firebase Admin SDK private keys
+apps/api/axion256system-firebase-adminsdk-*.json
 
 # dependencies
 /node_modules
