@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db } from "../../lib/firebase"; // path relative to src/app/inbox
+import { useRouter } from "next/navigation";
+import { db } from "../../lib/firebase";
+import { useAuth } from "../../lib/auth-context";
 import {
   collection,
   query,
@@ -9,19 +11,32 @@ import {
   onSnapshot,
   doc,
   updateDoc,
+  deleteDoc,
+  getDocs,
 } from "firebase/firestore";
 
 export default function InboxPage() {
+  const { user, company, loading } = useAuth();
+  const router = useRouter();
   const [conversations, setConversations] = useState([]);
   const [selectedConv, setSelectedConv] = useState(null);
   const [messages, setMessages] = useState([]);
   const [agentMessage, setAgentMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isTogglingAI, setIsTogglingAI] = useState(false);
-
-  const tenantId = "demo-company";
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  const tenantId = company?.id;
+
+  useEffect(() => {
+    if (!tenantId) return;
+
     const convRef = collection(db, "companies", tenantId, "conversations");
     const q = query(convRef, orderBy("lastUpdated", "desc"));
 
@@ -32,10 +47,10 @@ export default function InboxPage() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
-    if (!selectedConv) return;
+    if (!selectedConv || !tenantId) return;
 
     const messagesRef = collection(
       db,
@@ -53,10 +68,10 @@ export default function InboxPage() {
     });
 
     return () => unsubscribe();
-  }, [selectedConv]);
+  }, [selectedConv, tenantId]);
 
   const apiBase =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+    process.env.NEXT_PUBLIC_API_BASE_URL || "https://ellen-nonabridgable-samual.ngrok-free.dev";
 
   async function handleToggleAI() {
     if (!selectedConv) return;
@@ -73,6 +88,7 @@ export default function InboxPage() {
         body: JSON.stringify({
           convId: selectedConv.id,
           enable,
+          tenantId, // Pass tenant ID to API
         }),
       });
 
@@ -105,6 +121,7 @@ export default function InboxPage() {
         body: JSON.stringify({
           convId: selectedConv.id,
           body: agentMessage.trim(),
+          tenantId, // Pass tenant ID to API
         }),
       });
 
@@ -121,6 +138,53 @@ export default function InboxPage() {
     } finally {
       setIsSending(false);
     }
+  }
+
+  async function handleDeleteConversation() {
+    if (!selectedConv) return;
+
+    if (!confirm(`Are you sure you want to delete this conversation with ${selectedConv.participants?.[0] || 'Unknown'}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+
+      // Delete all messages in the conversation
+      const messagesRef = collection(db, "companies", tenantId, "conversations", selectedConv.id, "messages");
+      const messagesSnap = await getDocs(messagesRef);
+
+      const deletePromises = messagesSnap.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+
+      // Delete the conversation document
+      const convRef = doc(db, "companies", tenantId, "conversations", selectedConv.id);
+      await deleteDoc(convRef);
+
+      setSelectedConv(null);
+      setMessages([]);
+      alert("Conversation deleted successfully.");
+
+    } catch (err) {
+      console.error("Error deleting conversation:", err);
+      alert("Failed to delete conversation. Check console for details.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  if (loading || !company) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        fontSize: '18px'
+      }}>
+        Loading...
+      </div>
+    );
   }
 
   return (
@@ -168,28 +232,46 @@ export default function InboxPage() {
               borderTop: "1px solid #eee",
             }}
           >
-            <div style={{ fontSize: "0.85rem", marginBottom: "0.25rem" }}>
-              <strong>AI status:</strong>{" "}
-              {selectedConv.aiEnabled === false ? "Off" : "On"}
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+              <div style={{ fontSize: "0.85rem" }}>
+                <strong>AI status:</strong>{" "}
+                {selectedConv.aiEnabled === false ? "Off" : "On"}
+              </div>
+              <button
+                onClick={handleToggleAI}
+                disabled={isTogglingAI}
+                style={{
+                  padding: "0.25rem 0.5rem",
+                  fontSize: "0.75rem",
+                  borderRadius: "3px",
+                  border: "1px solid #ccc",
+                  backgroundColor:
+                    selectedConv.aiEnabled === false ? "#e0f7fa" : "#ffe0e0",
+                  cursor: isTogglingAI ? "default" : "pointer",
+                }}
+              >
+                {isTogglingAI
+                  ? "Updating..."
+                  : selectedConv.aiEnabled === false
+                  ? "Turn AI On"
+                  : "Turn AI Off"}
+              </button>
             </div>
+
             <button
-              onClick={handleToggleAI}
-              disabled={isTogglingAI}
+              onClick={handleDeleteConversation}
+              disabled={isDeleting}
               style={{
-                padding: "0.35rem 0.75rem",
-                fontSize: "0.85rem",
-                borderRadius: "4px",
-                border: "1px solid #ccc",
-                backgroundColor:
-                  selectedConv.aiEnabled === false ? "#e0f7fa" : "#ffe0e0",
-                cursor: isTogglingAI ? "default" : "pointer",
+                padding: "0.25rem 0.5rem",
+                fontSize: "0.75rem",
+                borderRadius: "3px",
+                border: "1px solid #f44336",
+                backgroundColor: "#ffeaea",
+                color: "#f44336",
+                cursor: isDeleting ? "default" : "pointer",
               }}
             >
-              {isTogglingAI
-                ? "Updating..."
-                : selectedConv.aiEnabled === false
-                ? "Turn AI On"
-                : "Turn AI Off"}
+              {isDeleting ? "Deleting..." : "🗑️ Delete Conversation"}
             </button>
           </div>
         )}

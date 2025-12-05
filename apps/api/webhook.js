@@ -38,8 +38,46 @@ app.use(bodyParser.urlencoded({ extended: false }));
 // Health check endpoint
 app.get("/health", (req, res) => res.json({ ok: true }));
 
+// Test webhook endpoint for manual testing
+app.post("/test-webhook/:tenantId", async (req, res) => {
+  try {
+    const { message, from } = req.body;
+    const tenantId = req.params.tenantId;
+
+    console.log(`🧪 Test webhook called for company ${tenantId}:`, { message, from });
+
+    // Load company configuration
+    const companyRef = db.collection("companies").doc(tenantId);
+    const companySnap = await companyRef.get();
+
+    if (!companySnap.exists) {
+      return res.status(404).json({
+        error: "Company not found",
+        tenantId,
+        message: "Make sure you're logged in and your company is registered"
+      });
+    }
+
+    const company = companySnap.data();
+
+    return res.json({
+      success: true,
+      company: company.name,
+      tenantId,
+      message,
+      from,
+      timestamp: new Date().toISOString(),
+      note: "Webhook is working! Configure this URL in your Twilio WhatsApp settings."
+    });
+
+  } catch (error) {
+    console.error("Test webhook error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 // WhatsApp webhook (Twilio inbound)
-app.post("/webhook/whatsapp", async (req, res) => {
+app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
   try {
     console.log("🔔 Incoming /webhook/whatsapp request body:", req.body);
 
@@ -49,15 +87,26 @@ app.post("/webhook/whatsapp", async (req, res) => {
     const message = body.message || body.Body;
     const from = body.from || body.From;
     const id = body.id || body.MessageSid || body.SmsMessageSid;
+    const tenantId = req.params.tenantId;
 
-    if (!message || !from || !id) {
-      console.warn("⚠️ Missing required fields in webhook payload:", body);
+    if (!message || !from || !id || !tenantId) {
+      console.warn("⚠️ Missing required fields in webhook payload:", { message, from, id, tenantId });
       return res
         .status(400)
-        .json({ error: "Missing required fields", received: body });
+        .json({ error: "Missing required fields", received: { message, from, id, tenantId } });
     }
 
-    const tenantId = "demo-company";
+    // Load company configuration
+    const companyRef = db.collection("companies").doc(tenantId);
+    const companySnap = await companyRef.get();
+
+    if (!companySnap.exists) {
+      console.warn(`⚠️ Company ${tenantId} not found`);
+      return res.status(404).json({ error: "Company not found" });
+    }
+
+    const company = companySnap.data();
+    console.log(`📍 Processing webhook for company: ${company.name} (${tenantId})`);
 
     // 1️⃣ Check if a conversation exists for this sender
     const convQuery = await db
@@ -143,13 +192,12 @@ app.post("/webhook/whatsapp", async (req, res) => {
     }
 
     // 4️⃣ Call AI (Gemini) to generate a reply
-    const geminiApiKey =
-      process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const geminiApiKey = company.geminiApiKey;
     let aiReplyText = `AI reply to "${message}"`;
 
     if (!geminiApiKey) {
       console.warn(
-        "⚠️ GEMINI_API_KEY / NEXT_PUBLIC_GEMINI_API_KEY not set; using fallback AI reply text."
+        `⚠️ Company ${tenantId} has no Gemini API key configured; using fallback AI reply text.`
       );
     } else {
       try {
@@ -157,16 +205,22 @@ app.post("/webhook/whatsapp", async (req, res) => {
           .map((m) => `${m.from}: ${m.body}`)
           .join("\n");
 
-        const prompt = `You are Axion AI, a friendly, helpful WhatsApp assistant for a company.
+        // Use company-specific AI prompt template
+        let prompt = company.aiPromptTemplate || `You are Axion AI, a friendly, helpful WhatsApp assistant for a company.
 You are chatting 1:1 with a real user over WhatsApp.
 Always respond naturally, avoid generic replies like "Ok" or "Noted".
 Be proactive: acknowledge what they said, add a bit of helpful context, and ask a simple follow-up question if it makes sense.
 Keep replies short (1–3 sentences), friendly, and easy to read on a phone.
 
 Here is the recent conversation history (oldest to newest):
-${historyText}
+{history}
 
 Continue the conversation with your next message.`;
+
+        // Replace placeholders in the prompt
+        prompt = prompt
+          .replace(/{companyName}/g, company.name || 'our company')
+          .replace(/{history}/g, historyText);
 
         // Use Gemini 2.5 Flash generateContent endpoint
         const geminiResponse = await axios.post(
@@ -191,12 +245,12 @@ Continue the conversation with your next message.`;
           aiReplyText = text;
         } else {
           console.warn(
-            "⚠️ Gemini 3 response did not contain text; falling back to default reply."
+            "⚠️ Gemini response did not contain text; falling back to default reply."
           );
         }
       } catch (aiErr) {
         console.error(
-          "❌ Error calling Gemini 3 Pro API:",
+          "❌ Error calling Gemini API:",
           aiErr.response?.data || aiErr
         );
       }
@@ -223,9 +277,13 @@ Continue the conversation with your next message.`;
     console.log(`🤖 AI reply saved in conversation ${convId}`);
 
     // 7️⃣ Send AI reply back to the user via WhatsApp (Twilio)
-    if (!twilioClient) {
+    const companyTwilioClient = company.twilioAccountSid && company.twilioAuthToken
+      ? twilio(company.twilioAccountSid, company.twilioAuthToken)
+      : null;
+
+    if (!companyTwilioClient || !company.twilioPhoneNumber) {
       console.warn(
-        "⚠️ Twilio client not configured (missing TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN); not sending WhatsApp reply."
+        `⚠️ Company ${tenantId} Twilio not configured (missing credentials or phone number); not sending WhatsApp reply.`
       );
     } else {
       try {
@@ -233,8 +291,12 @@ Continue the conversation with your next message.`;
           ? from
           : `whatsapp:${from}`;
 
-        await twilioClient.messages.create({
-          from: twilioFromWhatsApp,
+        const fromWhatsApp = company.twilioPhoneNumber.startsWith("whatsapp:")
+          ? company.twilioPhoneNumber
+          : `whatsapp:${company.twilioPhoneNumber}`;
+
+        await companyTwilioClient.messages.create({
+          from: fromWhatsApp,
           to: toWhatsApp,
           body: aiReplyText,
         });
@@ -260,15 +322,24 @@ Continue the conversation with your next message.`;
 // Agent send-message endpoint (used by Inbox UI to let a human reply)
 app.post("/agent/send-message", async (req, res) => {
   try {
-    const { convId, body } = req.body || {};
+    const { convId, body, tenantId } = req.body || {};
 
-    if (!convId || !body) {
+    if (!convId || !body || !tenantId) {
       return res
         .status(400)
-        .json({ error: "convId and body are required", received: req.body });
+        .json({ error: "convId, body, and tenantId are required", received: req.body });
     }
 
-    const tenantId = "demo-company";
+    // Load company configuration
+    const companyRef = db.collection("companies").doc(tenantId);
+    const companySnap = await companyRef.get();
+
+    if (!companySnap.exists) {
+      console.warn(`⚠️ Company ${tenantId} not found`);
+      return res.status(404).json({ error: "Company not found" });
+    }
+
+    const company = companySnap.data();
 
     const convRef = db
       .collection("companies")
@@ -307,16 +378,24 @@ app.post("/agent/send-message", async (req, res) => {
     });
 
     // 3️⃣ Send WhatsApp message via Twilio
-    if (!twilioClient) {
+    const companyTwilioClient = company.twilioAccountSid && company.twilioAuthToken
+      ? twilio(company.twilioAccountSid, company.twilioAuthToken)
+      : null;
+
+    if (!companyTwilioClient || !company.twilioPhoneNumber) {
       console.warn(
-        "⚠️ Twilio client not configured; stored agent message but did not send WhatsApp message."
+        `⚠️ Company ${tenantId} Twilio not configured; stored agent message but did not send WhatsApp message.`
       );
     } else {
       try {
         const toWhatsApp = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
 
-        await twilioClient.messages.create({
-          from: twilioFromWhatsApp,
+        const fromWhatsApp = company.twilioPhoneNumber.startsWith("whatsapp:")
+          ? company.twilioPhoneNumber
+          : `whatsapp:${company.twilioPhoneNumber}`;
+
+        await companyTwilioClient.messages.create({
+          from: fromWhatsApp,
           to: toWhatsApp,
           body,
         });
@@ -342,16 +421,25 @@ app.post("/agent/send-message", async (req, res) => {
 // Agent toggle-AI endpoint (updates aiEnabled and notifies user)
 app.post("/agent/toggle-ai", async (req, res) => {
   try {
-    const { convId, enable } = req.body || {};
+    const { convId, enable, tenantId } = req.body || {};
 
-    if (!convId || typeof enable !== "boolean") {
+    if (!convId || typeof enable !== "boolean" || !tenantId) {
       return res.status(400).json({
-        error: "convId and boolean enable are required",
+        error: "convId, boolean enable, and tenantId are required",
         received: req.body,
       });
     }
 
-    const tenantId = "demo-company";
+    // Load company configuration
+    const companyRef = db.collection("companies").doc(tenantId);
+    const companySnap = await companyRef.get();
+
+    if (!companySnap.exists) {
+      console.warn(`⚠️ Company ${tenantId} not found`);
+      return res.status(404).json({ error: "Company not found" });
+    }
+
+    const company = companySnap.data();
 
     const convRef = db
       .collection("companies")
@@ -389,18 +477,26 @@ app.post("/agent/toggle-ai", async (req, res) => {
     });
 
     // 3️⃣ Optionally notify user via WhatsApp
-    if (!twilioClient || !to) {
-      if (!twilioClient) {
+    const companyTwilioClient = company.twilioAccountSid && company.twilioAuthToken
+      ? twilio(company.twilioAccountSid, company.twilioAuthToken)
+      : null;
+
+    if (!companyTwilioClient || !company.twilioPhoneNumber || !to) {
+      if (!companyTwilioClient || !company.twilioPhoneNumber) {
         console.warn(
-          "⚠️ Twilio client not configured; stored AI toggle system message but did not send WhatsApp notification."
+          `⚠️ Company ${tenantId} Twilio not configured; stored AI toggle system message but did not send WhatsApp notification.`
         );
       }
     } else {
       try {
         const toWhatsApp = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
 
-        await twilioClient.messages.create({
-          from: twilioFromWhatsApp,
+        const fromWhatsApp = company.twilioPhoneNumber.startsWith("whatsapp:")
+          ? company.twilioPhoneNumber
+          : `whatsapp:${company.twilioPhoneNumber}`;
+
+        await companyTwilioClient.messages.create({
+          from: fromWhatsApp,
           to: toWhatsApp,
           body: statusText,
         });
