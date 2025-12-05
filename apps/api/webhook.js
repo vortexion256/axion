@@ -3,6 +3,8 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const admin = require("firebase-admin");
+// Firebase Admin SDK uses different API
+// Let's use the collection reference directly with where clauses
 const axios = require("axios");
 const twilio = require("twilio");
 const path = require("path");
@@ -28,6 +30,160 @@ const twilioClient =
   twilioAccountSid && twilioAuthToken
     ? twilio(twilioAccountSid, twilioAuthToken)
     : null;
+
+// Helper function to get user initials
+function getUserInitials(name) {
+  if (!name) return '';
+  const parts = name.trim().split(' ');
+  if (parts.length === 1) {
+    return parts[0].substring(0, 2).toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Helper function to assign ticket to available respondent or admin
+async function assignTicketToRespondent(ticketRef, tenantId, company) {
+  try {
+    console.log(`🔍 Checking assignment for company: ${tenantId}`);
+
+    // Get all active respondents for this company
+    const respondentsRef = db.collection('companies').doc(tenantId).collection('respondents');
+    const respondentsSnap = await respondentsRef.where('status', '==', 'active').get();
+
+    let assignedTo = null;
+    let assignedEmail = null;
+
+    if (!respondentsSnap.empty) {
+      const respondents = respondentsSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      console.log(`👥 [${new Date().toISOString()}] Found ${respondents.length} total respondents for company ${tenantId}`);
+      console.log('Respondents details:', respondents.map(r => ({
+        email: r.email,
+        status: r.status,
+        isOnline: r.isOnline,
+        lastSeen: r.lastSeen
+      })));
+
+      // Priority 1: Assign to online respondents first
+      const onlineRespondents = respondents.filter(r => r.isOnline === true);
+      console.log(`🟢 Online respondents: ${onlineRespondents.length}`);
+
+      // Priority 1.5: Also consider recently online respondents (last 5 minutes)
+      const recentlyOnlineRespondents = respondents.filter(r => {
+        if (r.lastSeen) {
+          const lastSeen = r.lastSeen.toDate ? r.lastSeen.toDate() : new Date(r.lastSeen);
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+          return lastSeen > fiveMinutesAgo;
+        }
+        return false;
+      });
+      console.log(`🕐 Recently online respondents: ${recentlyOnlineRespondents.length}`);
+
+      let assignedRespondent = null;
+
+      if (onlineRespondents.length > 0) {
+        // Priority 1: Round-robin assignment among online respondents
+        const lastAssignedIndex = company.lastAssignedOnlineIndex || 0;
+        const nextIndex = lastAssignedIndex % onlineRespondents.length;
+        assignedRespondent = onlineRespondents[nextIndex];
+
+        console.log(`🎯 Round-robin: ${nextIndex + 1}/${onlineRespondents.length} online respondents`);
+        console.log(`🎯 Assigned to online respondent: ${assignedRespondent.name || assignedRespondent.email} (${assignedRespondent.email})`);
+
+        // Update the round-robin index on the company
+        try {
+          const companyRef = db.collection('companies').doc(tenantId);
+          await companyRef.update({
+            lastAssignedOnlineIndex: nextIndex + 1,
+          });
+        } catch (updateError) {
+          console.error('Failed to update last assigned online index:', updateError);
+        }
+      } else if (recentlyOnlineRespondents.length > 0) {
+        // Priority 1.5: Round-robin assignment among recently online respondents
+        const lastAssignedIndex = company.lastAssignedRecentIndex || 0;
+        const nextIndex = lastAssignedIndex % recentlyOnlineRespondents.length;
+        assignedRespondent = recentlyOnlineRespondents[nextIndex];
+
+        console.log(`⏰ Round-robin: ${nextIndex + 1}/${recentlyOnlineRespondents.length} recently online respondents`);
+        console.log(`⏰ Assigned to recently online respondent: ${assignedRespondent.name || assignedRespondent.email} (${assignedRespondent.email})`);
+
+        // Update the round-robin index on the company
+        try {
+          const companyRef = db.collection('companies').doc(tenantId);
+          await companyRef.update({
+            lastAssignedRecentIndex: nextIndex + 1,
+          });
+        } catch (updateError) {
+          console.error('Failed to update last assigned recent index:', updateError);
+        }
+      } else if (respondents.length > 0) {
+        // Priority 2: Round-robin assignment among any available respondents
+        const lastAssignedIndex = company.lastAssignedAnyIndex || 0;
+        const nextIndex = lastAssignedIndex % respondents.length;
+        assignedRespondent = respondents[nextIndex];
+
+        console.log(`⚖️ Round-robin: ${nextIndex + 1}/${respondents.length} available respondents`);
+        console.log(`⚖️ Assigned to available respondent: ${assignedRespondent.name || assignedRespondent.email} (${assignedRespondent.email})`);
+
+        // Update the round-robin index on the company
+        try {
+          const companyRef = db.collection('companies').doc(tenantId);
+          await companyRef.update({
+            lastAssignedAnyIndex: nextIndex + 1,
+          });
+        } catch (updateError) {
+          console.error('Failed to update last assigned any index:', updateError);
+        }
+      }
+
+      if (assignedRespondent) {
+        assignedTo = assignedRespondent.name || assignedRespondent.email.split('@')[0];
+        assignedEmail = assignedRespondent.email;
+        console.log(`📧 Assigned conversation to: ${assignedTo} (${assignedEmail})`);
+      }
+
+      // TEMPORARY DEBUG: Force assign to first respondent if admin would be assigned
+      if (!assignedTo && respondents.length > 0) {
+        console.log('🔧 DEBUG: Forcing assignment to first respondent for testing');
+        const firstRespondent = respondents[0];
+        assignedTo = firstRespondent.name || firstRespondent.email.split('@')[0];
+        assignedEmail = firstRespondent.email;
+        console.log(`🎯 DEBUG: Force assigned to: ${assignedTo} (${assignedEmail})`);
+      }
+    }
+
+    // If no respondents available or assignment failed, assign to admin
+    if (!assignedTo) {
+      assignedTo = 'Admin';
+      assignedEmail = null;
+      console.log(`👨‍💼 No respondents available, assigned to Admin`);
+    }
+
+    // Update ticket with assignment
+    await ticketRef.update({
+      assignedTo,
+      assignedEmail,
+      assignedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(`👤 Assigned conversation to: ${assignedTo}`);
+    return { assignedTo, assignedEmail };
+  } catch (error) {
+    console.error('Error assigning conversation:', error);
+    // Fallback: assign to admin
+    await convRef.update({
+      assignedTo: 'Admin',
+      assignedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return { assignedTo: 'Admin', assignedEmail: null };
+  }
+}
 
 const app = express();
 app.use(cors());
@@ -108,76 +264,86 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
     const company = companySnap.data();
     console.log(`📍 Processing webhook for company: ${company.name} (${tenantId})`);
 
-    // 1️⃣ Check if a conversation exists for this sender
-    const convQuery = await db
+    // 1️⃣ Check if an open ticket exists for this customer
+    const ticketQuery = await db
       .collection("companies")
       .doc(tenantId)
-      .collection("conversations")
-      .where("participants", "array-contains", from)
+      .collection("tickets")
+      .where("customerId", "==", from)
+      .where("status", "!=", "closed")
       .get();
 
-    let convRef;
-    let convId;
-    let convDocData;
+    let ticketRef;
+    let ticketId;
+    let ticketDocData;
 
-    if (!convQuery.empty) {
-      // Use existing conversation
-      const convDoc = convQuery.docs[0];
-      convRef = convDoc.ref;
-      convId = convRef.id;
-      convDocData = convDoc.data();
+    if (!ticketQuery.empty) {
+      // Use existing open ticket
+      const ticketDoc = ticketQuery.docs[0];
+      ticketRef = ticketDoc.ref;
+      ticketId = ticketRef.id;
+      ticketDocData = ticketDoc.data();
     } else {
-      // Create a new conversation
-      convId = `conv-${Date.now()}`;
-      convRef = db
+      // Create a new ticket
+      ticketId = `ticket-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      ticketRef = db
         .collection("companies")
         .doc(tenantId)
-        .collection("conversations")
-        .doc(convId);
+        .collection("tickets")
+        .doc(ticketId);
 
-      const initialConvData = {
-        participants: [from],
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        aiEnabled: true, // AI is enabled by default for new conversations
+      const initialTicketData = {
+        customerId: from,
+        status: "open",
+        lastMessage: "",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        channel: "whatsapp",
+        aiEnabled: true, // AI is enabled by default for new tickets
       };
 
-      await convRef.set(initialConvData);
-      convDocData = initialConvData;
+      await ticketRef.set(initialTicketData);
+
+      // Assign ticket to available respondent or admin
+      await assignTicketToRespondent(ticketRef, tenantId, company);
+
+      ticketDocData = initialTicketData;
     }
 
-    // If conversation doc somehow had no data loaded, fetch it
-    if (!convDocData) {
-      const snap = await convRef.get();
-      convDocData = snap.data() || {};
+    // If ticket doc somehow had no data loaded, fetch it
+    if (!ticketDocData) {
+      const snap = await ticketRef.get();
+      ticketDocData = snap.data() || {};
     }
 
-    const aiEnabled = convDocData.aiEnabled !== false; // treat missing as true
+    const aiEnabled = ticketDocData.aiEnabled !== false; // treat missing as true
 
-    // 2️⃣ Save incoming WhatsApp message in "messages" collection
-    const msgRef = convRef.collection("messages").doc(id);
+    // 2️⃣ Save incoming WhatsApp message in ticket's messages collection
+    const msgRef = ticketRef.collection("messages").doc(id);
     await msgRef.set({
       from,
       body: message,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // If AI is disabled for this conversation, only store the user message and update lastUpdated
+    // If AI is disabled for this ticket, only store the user message and update updatedAt
     if (!aiEnabled) {
       console.log(
-        `🤖 AI is disabled for conversation ${convId}; only storing incoming message.`
+        `🤖 AI is disabled for ticket ${ticketId}; only storing incoming message.`
       );
 
-      await convRef.update({
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      await ticketRef.update({
+        lastMessage: message,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return res.sendStatus(200);
     }
 
-    // 3️⃣ Load recent conversation history for AI context
+    // 3️⃣ Load recent ticket message history for AI context
     let history = [];
     try {
-      const historySnap = await convRef
+      const historySnap = await ticketRef
         .collection("messages")
         .orderBy("createdAt", "asc")
         .limitToLast(20)
@@ -186,7 +352,7 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
       history = historySnap.docs.map((d) => d.data());
     } catch (historyErr) {
       console.error(
-        "❌ Error loading conversation history for AI:",
+        "❌ Error loading ticket message history for AI:",
         historyErr
       );
     }
@@ -256,25 +422,29 @@ Continue the conversation with your next message.`;
       }
     }
 
-    // 5️⃣ Update conversation's lastUpdated timestamp
-    await convRef.update({
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    // 5️⃣ Update ticket's updatedAt timestamp and lastMessage
+    await ticketRef.update({
+      lastMessage: message,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     console.log(
-      `✅ Saved message from ${from} in conversation ${convId}: "${message}"`
+      `✅ Saved message from ${from} in ticket ${ticketId}: "${message}"`
     );
 
     // 6️⃣ Add AI reply as the next message (store in Firestore)
+    const aiInitials = getUserInitials("Axion AI");
+    const attributedAiReply = `${aiReplyText}\n\n<${aiInitials}>`;
+
     const aiMsgId = `ai-${Date.now()}`;
-    const aiMsgRef = convRef.collection("messages").doc(aiMsgId);
+    const aiMsgRef = ticketRef.collection("messages").doc(aiMsgId);
     await aiMsgRef.set({
       from: "Axion AI",
-      body: aiReplyText,
+      body: attributedAiReply,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    console.log(`🤖 AI reply saved in conversation ${convId}`);
+    console.log(`🤖 AI reply saved in ticket ${ticketId}`);
 
     // 7️⃣ Send AI reply back to the user via WhatsApp (Twilio)
     const companyTwilioClient = company.twilioAccountSid && company.twilioAuthToken
@@ -298,7 +468,7 @@ Continue the conversation with your next message.`;
         await companyTwilioClient.messages.create({
           from: fromWhatsApp,
           to: toWhatsApp,
-          body: aiReplyText,
+          body: attributedAiReply,
         });
 
         console.log(
@@ -335,7 +505,7 @@ Continue the conversation with your next message.`;
         // Store system message in Firestore to notify about AI reply failure
         try {
           const systemMsgId = `system-ai-twilio-error-${Date.now()}`;
-          const systemMsgRef = convRef.collection("messages").doc(systemMsgId);
+          const systemMsgRef = ticketRef.collection("messages").doc(systemMsgId);
           await systemMsgRef.set({
             from: "System",
             role: "system",
@@ -362,10 +532,40 @@ Continue the conversation with your next message.`;
   }
 });
 
+// Debug endpoint to check respondent status
+app.get("/debug/respondents/:tenantId", async (req, res) => {
+  try {
+    const tenantId = req.params.tenantId;
+
+    const respondentsRef = db.collection('companies').doc(tenantId).collection('respondents');
+    const activeRespondentsQuery = query(respondentsRef, where('status', '==', 'active'));
+    const respondentsSnap = await getDocs(activeRespondentsQuery);
+
+    const respondents = respondentsSnap.docs.map(doc => ({
+      id: doc.id,
+      email: doc.data().email,
+      status: doc.data().status,
+      isOnline: doc.data().isOnline,
+      lastSeen: doc.data().lastSeen,
+      name: doc.data().name
+    }));
+
+    res.json({
+      tenantId,
+      respondentCount: respondents.length,
+      respondents: respondents,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error checking respondents:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Agent send-message endpoint (used by Inbox UI to let a human reply)
 app.post("/agent/send-message", async (req, res) => {
   try {
-    const { convId, body, tenantId } = req.body || {};
+    const { convId, body, tenantId, userName, userEmail } = req.body || {};
 
     if (!convId || !body || !tenantId) {
       return res
@@ -384,20 +584,19 @@ app.post("/agent/send-message", async (req, res) => {
 
     const company = companySnap.data();
 
-    const convRef = db
+    const ticketRef = db
       .collection("companies")
       .doc(tenantId)
-      .collection("conversations")
-      .doc(convId);
+      .collection("tickets")
+      .doc(convId); // convId is actually ticketId in the new system
 
-    const convSnap = await convRef.get();
-    if (!convSnap.exists) {
-      return res.status(404).json({ error: "Conversation not found" });
+    const ticketSnap = await ticketRef.get();
+    if (!ticketSnap.exists) {
+      return res.status(404).json({ error: "Ticket not found" });
     }
 
-    const convData = convSnap.data() || {};
-    const participants = convData.participants || [];
-    const to = participants[0];
+    const ticketData = ticketSnap.data() || {};
+    const to = ticketData.customerId;
 
     if (!to) {
       return res
@@ -405,19 +604,25 @@ app.post("/agent/send-message", async (req, res) => {
         .json({ error: "Conversation has no participant phone number" });
     }
 
-    // 1️⃣ Store agent message in Firestore
+    // 1️⃣ Store agent message in Firestore with attribution
+    const agentName = userName || "Agent";
+    const agentInitials = getUserInitials(agentName);
+    const attributedBody = `${body}\n\n<${agentInitials}>`;
+
     const agentMsgId = `agent-${Date.now()}`;
-    const agentMsgRef = convRef.collection("messages").doc(agentMsgId);
+    const agentMsgRef = ticketRef.collection("messages").doc(agentMsgId);
     await agentMsgRef.set({
-      from: "Agent",
+      from: agentName,
       role: "agent",
-      body,
+      body: attributedBody,
+      userEmail,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 2️⃣ Update conversation lastUpdated
-    await convRef.update({
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    // 2️⃣ Update ticket updatedAt and lastMessage
+    await ticketRef.update({
+      lastMessage: body,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     // 3️⃣ Send WhatsApp message via Twilio
@@ -440,7 +645,7 @@ app.post("/agent/send-message", async (req, res) => {
         await companyTwilioClient.messages.create({
           from: fromWhatsApp,
           to: toWhatsApp,
-          body,
+          body: attributedBody,
         });
 
         console.log(
@@ -527,25 +732,24 @@ app.post("/agent/toggle-ai", async (req, res) => {
 
     const company = companySnap.data();
 
-    const convRef = db
+    const ticketRef = db
       .collection("companies")
       .doc(tenantId)
-      .collection("conversations")
-      .doc(convId);
+      .collection("tickets")
+      .doc(convId); // convId is actually ticketId in the new system
 
-    const convSnap = await convRef.get();
-    if (!convSnap.exists) {
-      return res.status(404).json({ error: "Conversation not found" });
+    const ticketSnap = await ticketRef.get();
+    if (!ticketSnap.exists) {
+      return res.status(404).json({ error: "Ticket not found" });
     }
 
-    const convData = convSnap.data() || {};
-    const participants = convData.participants || [];
-    const to = participants[0];
+    const ticketData = ticketSnap.data() || {};
+    const to = ticketData.customerId;
 
-    // 1️⃣ Update aiEnabled on conversation
-    await convRef.update({
+    // 1️⃣ Update aiEnabled on ticket
+    await ticketRef.update({
       aiEnabled: enable,
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     const statusText = enable
@@ -554,7 +758,7 @@ app.post("/agent/toggle-ai", async (req, res) => {
 
     // 2️⃣ Store a system message in Firestore so inbox shows the change
     const systemMsgId = `system-ai-toggle-${Date.now()}`;
-    const systemMsgRef = convRef.collection("messages").doc(systemMsgId);
+    const systemMsgRef = ticketRef.collection("messages").doc(systemMsgId);
     await systemMsgRef.set({
       from: "System",
       role: "system",
