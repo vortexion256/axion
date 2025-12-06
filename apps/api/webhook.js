@@ -563,52 +563,132 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
       return res.send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
     }
 
-    // AI will respond - add a system message if this is the first AI response after human agent was active
-    const previousMessages = await ticketRef.collection('messages')
-      .orderBy('createdAt', 'desc')
-      .limit(10)
-      .get();
+    // AI will respond - check if we need to notify about AI takeover
+    if (aiShouldRespond && company.notifyAiTakeover !== false) {
+      // Get all messages to check for human activity (exclude the message we just stored)
+      const allMessagesSnap = await ticketRef.collection('messages')
+        .orderBy('createdAt', 'desc')
+        .limit(30)
+        .get();
 
-    const recentMessages = previousMessages.docs.map(doc => doc.data());
-    const aiWaitMinutes = company.aiWaitMinutes || 5; // Use configured wait time
-    const hasRecentHumanResponse = recentMessages.some(msg =>
-      msg.role === 'agent' && msg.createdAt &&
-      (msg.createdAt.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt)) > new Date(Date.now() - aiWaitMinutes * 60 * 1000)
-    );
+      const allMessages = allMessagesSnap.docs
+        .map(doc => doc.data())
+        .filter(msg => msg.createdAt); // Filter out any messages without timestamps
+      
+      const aiWaitMinutes = company.aiWaitMinutes || 5; // Use configured wait time
+      
+      // Check if there were any human (agent) messages
+      const humanMessages = allMessages.filter(msg => msg.role === 'agent');
+      
+      // Check if ticket was assigned to a human (not Admin) - indicates human was involved
+      const wasAssignedToHuman = ticketDocData.assignedEmail && ticketDocData.assignedTo !== 'Admin';
+      
+      // Determine if we should send notification
+      let shouldSendNotification = false;
+      let notificationReason = '';
 
-    if (hasRecentHumanResponse && company.notifyAiTakeover !== false) {
-      // Add system message that AI is taking over
-      const aiTakeoverMsgRef = ticketRef.collection('messages').doc(`system-ai-takeover-${Date.now()}`);
-      await aiTakeoverMsgRef.set({
-        from: "System",
-        role: "system",
-        body: `🤖 Our AI assistant is now handling responses while the human agent is away. You'll receive automated replies until the agent returns.`,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      if (humanMessages.length > 0) {
+        // Get the most recent human message
+        const lastHumanMessage = humanMessages.sort((a, b) => {
+          const timeA = a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+          const timeB = b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+          return timeB - timeA;
+        })[0];
 
-      console.log(`🤖 Added AI takeover notification for ticket ${ticketId}`);
+        const lastHumanTime = lastHumanMessage.createdAt.toDate ? lastHumanMessage.createdAt.toDate() : new Date(lastHumanMessage.createdAt);
+        const timeSinceLastHuman = Date.now() - lastHumanTime.getTime();
 
-      // Send WhatsApp notification to customer about AI takeover
-      try {
-        if (company.notifyAiTakeover !== false && company.twilioAccountSid && company.twilioAuthToken && company.twilioPhoneNumber) {
-          const twilioClient = twilio(company.twilioAccountSid, company.twilioAuthToken);
-          const takeoverMessage = `🤖 Hi! Our human agent has stepped away temporarily. Our AI assistant will continue helping you with automated responses until the agent returns.`;
+        // Check if human hasn't responded recently (they're inactive)
+        const hasRecentHumanResponse = timeSinceLastHuman < aiWaitMinutes * 60 * 1000;
 
-          const toWhatsApp = from.startsWith("whatsapp:") ? from : `whatsapp:${from}`;
-          const fromWhatsApp = company.twilioPhoneNumber.startsWith("whatsapp:")
-            ? company.twilioPhoneNumber
-            : `whatsapp:${company.twilioPhoneNumber}`;
+        // Only notify if human was active before but is now inactive
+        if (!hasRecentHumanResponse) {
+          // Find the most recent AI takeover notification
+          const aiTakeoverNotifications = allMessages.filter(msg => 
+            msg.role === 'system' && 
+            msg.body && 
+            msg.body.includes('AI agent will respond')
+          );
 
-          await twilioClient.messages.create({
-            from: fromWhatsApp,
-            to: toWhatsApp,
-            body: takeoverMessage,
-          });
+          if (aiTakeoverNotifications.length === 0) {
+            // No previous AI takeover notification - this is the first time AI is taking over
+            shouldSendNotification = true;
+            notificationReason = `first AI takeover after human was active (${Math.floor(timeSinceLastHuman / (1000 * 60))} minutes ago)`;
+          } else {
+            // Get the most recent AI takeover notification
+            const lastTakeoverNotification = aiTakeoverNotifications.sort((a, b) => {
+              const timeA = a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+              const timeB = b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+              return timeB - timeA;
+            })[0];
 
-          console.log(`📤 Sent AI takeover notification to ${toWhatsApp}`);
+            const lastTakeoverTime = lastTakeoverNotification.createdAt.toDate ? lastTakeoverNotification.createdAt.toDate() : new Date(lastTakeoverNotification.createdAt);
+
+            // Check if there was a human message AFTER the last AI takeover notification
+            // If yes, human came back and went inactive again - send notification
+            const humanMessagesAfterTakeover = humanMessages.filter(msg => {
+              const msgTime = msg.createdAt.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt);
+              return msgTime > lastTakeoverTime;
+            });
+
+            if (humanMessagesAfterTakeover.length > 0) {
+              shouldSendNotification = true;
+              notificationReason = `human came back and went inactive again (${Math.floor(timeSinceLastHuman / (1000 * 60))} minutes ago)`;
+            }
+          }
         }
-      } catch (twilioError) {
-        console.error('❌ Error sending AI takeover WhatsApp notification:', twilioError);
+      } else if (wasAssignedToHuman) {
+        // No human messages yet, but ticket was assigned to a human who is now offline
+        // This means AI is taking over from the start because human is offline
+        const aiTakeoverNotifications = allMessages.filter(msg => 
+          msg.role === 'system' && 
+          msg.body && 
+          msg.body.includes('AI agent will respond')
+        );
+
+        // Only send if we haven't sent one before
+        if (aiTakeoverNotifications.length === 0) {
+          shouldSendNotification = true;
+          notificationReason = `AI taking over - human assigned but offline`;
+        }
+      }
+
+      if (shouldSendNotification) {
+        // Add system message that AI is taking over
+        const aiTakeoverMsgRef = ticketRef.collection('messages').doc(`system-ai-takeover-${Date.now()}`);
+        await aiTakeoverMsgRef.set({
+          from: "System",
+          role: "system",
+          body: `🤖 Human inactive, AI agent will respond.`,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        console.log(`🤖 Added AI takeover notification for ticket ${ticketId} - ${notificationReason}`);
+
+        // Send WhatsApp notification to customer about AI takeover
+        try {
+          if (company.notifyAiTakeover !== false && company.twilioAccountSid && company.twilioAuthToken && company.twilioPhoneNumber) {
+            const twilioClient = twilio(company.twilioAccountSid, company.twilioAuthToken);
+            const takeoverMessage = `🤖 Human inactive, AI agent will respond.`;
+
+            const toWhatsApp = from.startsWith("whatsapp:") ? from : `whatsapp:${from}`;
+            const fromWhatsApp = company.twilioPhoneNumber.startsWith("whatsapp:")
+              ? company.twilioPhoneNumber
+              : `whatsapp:${company.twilioPhoneNumber}`;
+
+            await twilioClient.messages.create({
+              from: fromWhatsApp,
+              to: toWhatsApp,
+              body: takeoverMessage,
+            });
+
+            console.log(`📤 Sent AI takeover notification to ${toWhatsApp}`);
+          }
+        } catch (twilioError) {
+          console.error('❌ Error sending AI takeover WhatsApp notification:', twilioError);
+        }
+      } else {
+        console.log(`🤖 Skipping AI takeover notification for ticket ${ticketId} - conditions not met`);
       }
     }
 
@@ -621,7 +701,10 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
         .limitToLast(20)
         .get();
 
-      history = historySnap.docs.map((d) => d.data());
+      // Filter out system messages from AI history to prevent confusion
+      history = historySnap.docs
+        .map((d) => d.data())
+        .filter((m) => m.role !== 'system');
     } catch (historyErr) {
       console.error(
         "❌ Error loading ticket message history for AI:",
@@ -645,6 +728,7 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
 
         // Use company-specific AI prompt template
         let prompt = company.aiPromptTemplate || `You are Axion AI, a friendly, helpful WhatsApp assistant for a company.
+You are an AI assistant, NOT a human agent. Never claim to be a human agent.
 You are chatting 1:1 with a real user over WhatsApp.
 Always respond naturally, avoid generic replies like "Ok" or "Noted".
 Be proactive: acknowledge what they said, add a bit of helpful context, and ask a simple follow-up question if it makes sense.
@@ -779,16 +863,24 @@ Continue the conversation with your next message.`;
         try {
           const systemMsgId = `system-ai-twilio-error-${Date.now()}`;
           const systemMsgRef = ticketRef.collection("messages").doc(systemMsgId);
+          
+          // Build error object with only defined values
+          const errorData = {
+            code: errorCode || "UNKNOWN",
+            message: twilioErr?.message || "Unknown Twilio error"
+          };
+          
+          // Only add status if it's defined
+          if (twilioErr?.status !== undefined) {
+            errorData.status = twilioErr.status;
+          }
+          
           await systemMsgRef.set({
             from: "System",
             role: "system",
             body: systemMessageBody,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            error: {
-              code: errorCode,
-              message: twilioErr?.message || "Unknown Twilio error",
-              status: twilioErr?.status
-            }
+            error: errorData
           });
 
           console.log(`⚠️ Stored system error message for AI reply in conversation ${convId}: "${systemMessageBody}"`);
@@ -877,6 +969,87 @@ app.post("/agent/send-message", async (req, res) => {
         .json({ error: "Conversation has no participant phone number" });
     }
 
+    // Check if this is the first human message (before storing it)
+    const shouldTurnOffAI = ticketData.assignedEmail === userEmail && ticketData.aiEnabled;
+    let shouldNotifyAgentJoin = false;
+
+    // Check if there are any previous agent messages to determine if this is the first human message
+    if (company.notifyAgentJoin !== false) {
+      try {
+        // Get all messages to check for previous agent messages
+        const allMessagesSnap = await ticketRef.collection('messages')
+          .orderBy('createdAt', 'desc')
+          .limit(50)
+          .get();
+
+        const allMessages = allMessagesSnap.docs.map(doc => doc.data());
+        const hasPreviousAgentMessages = allMessages.some(msg => msg.role === 'agent');
+
+        // Check if AI was the most recent responder (excluding system messages)
+        const nonSystemMessages = allMessages.filter(msg => msg.role !== 'system');
+        const lastNonSystemMessage = nonSystemMessages.length > 0 ? nonSystemMessages[0] : null; // Already sorted by createdAt desc
+        const wasLastResponseFromAI = lastNonSystemMessage && lastNonSystemMessage.role === 'ai';
+
+        // Check if we've already sent an agent join notification recently
+        const recentJoinNotifications = allMessages.filter(msg =>
+          msg.role === 'system' &&
+          msg.body &&
+          msg.body.includes('Human agent joined') &&
+          msg.createdAt &&
+          (msg.createdAt.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt)) > new Date(Date.now() - 5 * 60 * 1000)
+        );
+
+        // Send notification if:
+        // 1. This is the first human message ever (no previous agent messages), OR
+        // 2. AI was the last responder and now human is taking over
+        const isFirstHumanMessage = !hasPreviousAgentMessages && recentJoinNotifications.length === 0;
+        const isHumanTakingOverFromAI = wasLastResponseFromAI && recentJoinNotifications.length === 0;
+
+        shouldNotifyAgentJoin = isFirstHumanMessage || isHumanTakingOverFromAI;
+      } catch (error) {
+        console.error('❌ Error checking for previous agent messages:', error);
+        // If query fails, assume it's the first message to be safe
+        shouldNotifyAgentJoin = true;
+      }
+    }
+
+    // Send agent join notification BEFORE storing the agent message
+    if (shouldNotifyAgentJoin) {
+      // Add system message about agent joining
+      const agentJoinMsgRef = ticketRef.collection('messages').doc(`system-agent-joined-${Date.now()}`);
+      await agentJoinMsgRef.set({
+        from: "System",
+        role: "system",
+        body: `👋 Human agent joined the chat.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      console.log(`👋 Added agent join notification for ticket ${convId} - ${userName || "Agent"} joined`);
+
+      // Send WhatsApp notification to customer about agent joining
+      try {
+        if (company.notifyAgentJoin !== false && company.twilioAccountSid && company.twilioAuthToken && company.twilioPhoneNumber) {
+          const twilioClient = twilio(company.twilioAccountSid, company.twilioAuthToken);
+          const joinMessage = `👋 Human agent joined the chat.`;
+
+          const toWhatsApp = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+          const fromWhatsApp = company.twilioPhoneNumber.startsWith("whatsapp:")
+            ? company.twilioPhoneNumber
+            : `whatsapp:${company.twilioPhoneNumber}`;
+
+          await twilioClient.messages.create({
+            from: fromWhatsApp,
+            to: toWhatsApp,
+            body: joinMessage,
+          });
+
+          console.log(`📤 Sent agent join WhatsApp notification to ${toWhatsApp}`);
+        }
+      } catch (error) {
+        console.error('❌ Error sending agent join WhatsApp notification:', error);
+      }
+    }
+
     // 1️⃣ Store agent message in Firestore with attribution
     const agentName = userName || "Agent";
     const agentInitials = getUserInitials(agentName);
@@ -895,8 +1068,6 @@ app.post("/agent/send-message", async (req, res) => {
 
     // 2️⃣ Update ticket updatedAt and lastMessage
     // Also turn off AI when respondent sends a message (they're actively handling)
-    const shouldTurnOffAI = ticketData.assignedEmail === userEmail && ticketData.aiEnabled;
-
     await ticketRef.update({
       lastMessage: body,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -964,17 +1135,25 @@ app.post("/agent/send-message", async (req, res) => {
         // Store system message in Firestore to notify the agent
         try {
           const systemMsgId = `system-twilio-error-${Date.now()}`;
-          const systemMsgRef = convRef.collection("messages").doc(systemMsgId);
+          const systemMsgRef = ticketRef.collection("messages").doc(systemMsgId);
+          
+          // Build error object with only defined values
+          const errorData = {
+            code: errorCode || "UNKNOWN",
+            message: twilioErr?.message || "Unknown Twilio error"
+          };
+          
+          // Only add status if it's defined
+          if (twilioErr?.status !== undefined) {
+            errorData.status = twilioErr.status;
+          }
+          
           await systemMsgRef.set({
             from: "System",
             role: "system",
             body: systemMessageBody,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            error: {
-              code: errorCode,
-              message: twilioErr?.message || "Unknown Twilio error",
-              status: twilioErr?.status
-            }
+            error: errorData
           });
 
           console.log(`⚠️ Stored system error message in conversation ${convId}: "${systemMessageBody}"`);
