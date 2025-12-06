@@ -9,6 +9,46 @@ const axios = require("axios");
 const twilio = require("twilio");
 const path = require("path");
 
+// Periodic cleanup for stale respondent statuses
+setInterval(async () => {
+  try {
+    console.log('🧹 Running periodic respondent status cleanup...');
+
+    // Get all companies
+    const companiesSnap = await db.collection('companies').get();
+
+    for (const companyDoc of companiesSnap.docs) {
+      const companyId = companyDoc.id;
+      const respondentsRef = companyDoc.ref.collection('respondents');
+
+      // Get all respondents who are marked as online
+      const onlineRespondentsSnap = await respondentsRef.where('isOnline', '==', true).get();
+
+      for (const respondentDoc of onlineRespondentsSnap.docs) {
+        const respondentData = respondentDoc.data();
+
+        if (respondentData.lastSeen) {
+          const lastSeen = respondentData.lastSeen.toDate ? respondentData.lastSeen.toDate() : new Date(respondentData.lastSeen);
+          const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+          if (lastSeen < tenMinutesAgo) {
+            console.log(`🚫 Periodic cleanup: Marking ${respondentData.email} offline (last seen ${Math.floor((Date.now() - lastSeen.getTime()) / (1000 * 60))} minutes ago)`);
+
+            await respondentDoc.ref.update({
+              isOnline: false,
+              lastSeen: respondentData.lastSeen, // Keep original timestamp
+            });
+          }
+        }
+      }
+    }
+
+    console.log('✅ Periodic cleanup completed');
+  } catch (error) {
+    console.error('❌ Error in periodic cleanup:', error);
+  }
+}, 5 * 60 * 1000); // Run every 5 minutes
+
 // Initialize Firebase Admin
 const serviceAccount = require("./axion256system-firebase-adminsdk-fbsvc-bbb9336fa7.json");
 
@@ -421,24 +461,77 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
 
       if (!respondentQuery.empty) {
         const respondentData = respondentQuery.docs[0].data();
-        const isCurrentlyOnline = respondentData.isOnline === true;
+        let isCurrentlyOnline = respondentData.isOnline === true;
 
-        // Check if respondent was active within configured wait time
-        const waitMinutes = company.aiWaitMinutes || 5; // Default to 5 minutes if not set
+        // Check localStorage flags for browser close detection (more aggressive)
+        // If respondent was marked as inactive in localStorage, consider them offline
+        const localStorageCheck = req.headers['x-respondent-active'] === 'false' ||
+                                 req.body.respondentActive === false;
+
+        if (localStorageCheck) {
+          console.log(`🚫 Browser close detected for ${ticketDocData.assignedEmail}, marking offline`);
+          isCurrentlyOnline = false;
+          // Update database to reflect offline status
+          await respondentQuery.docs[0].ref.update({
+            isOnline: false,
+            lastSeen: new Date(),
+          });
+        }
+
+        // Auto-mark as offline if last seen > 10 minutes ago (server-side safety check)
+        if (isCurrentlyOnline && respondentData.lastSeen) {
+          const lastSeen = respondentData.lastSeen.toDate ? respondentData.lastSeen.toDate() : new Date(respondentData.lastSeen);
+          const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+          if (lastSeen < tenMinutesAgo) {
+            console.log(`🚫 Auto-marking ${ticketDocData.assignedEmail} as offline (last seen ${Math.floor((Date.now() - lastSeen.getTime()) / (1000 * 60))} minutes ago)`);
+            // Update the respondent as offline in database
+            await respondentQuery.docs[0].ref.update({
+              isOnline: false,
+              lastSeen: respondentData.lastSeen // Keep original lastSeen for reference
+            });
+            isCurrentlyOnline = false;
+          }
+        }
+
+        // Check if respondent was active within configured wait time (from admin settings)
+        const waitMinutes = company.aiWaitMinutes || 5; // Use admin setting, default to 5 minutes
         let wasRecentlyActive = false;
+        let timeSinceLastSeen = null;
         if (respondentData.lastSeen) {
           const lastSeen = respondentData.lastSeen.toDate ? respondentData.lastSeen.toDate() : new Date(respondentData.lastSeen);
           const waitTimeAgo = new Date(Date.now() - waitMinutes * 60 * 1000);
           wasRecentlyActive = lastSeen > waitTimeAgo;
-          console.log(`📅 Last seen: ${lastSeen.toISOString()}, ${waitMinutes}min ago: ${waitTimeAgo.toISOString()}`);
+          timeSinceLastSeen = Math.floor((Date.now() - lastSeen.getTime()) / (1000 * 60)); // minutes ago
+          console.log(`📅 Last seen: ${lastSeen.toISOString()}, ${timeSinceLastSeen} minutes ago (${waitMinutes}min wait time)`);
+
+          // If respondent is marked as online but hasn't been active recently, auto-mark offline
+          if (isCurrentlyOnline && !wasRecentlyActive) {
+            console.log(`🚫 Auto-correcting stale online status for ${ticketDocData.assignedEmail}`);
+            await respondentQuery.docs[0].ref.update({
+              isOnline: false,
+              lastSeen: respondentData.lastSeen, // Keep original timestamp
+            });
+            isCurrentlyOnline = false;
+          }
         }
 
-        // AI responds if respondent is offline AND hasn't been active in last 5 minutes
-        aiShouldRespond = !isCurrentlyOnline && !wasRecentlyActive;
+        // Consider respondent "effectively offline" if:
+        // 1. isOnline is explicitly false, OR
+        // 2. isOnline is true but they haven't been active in 5+ minutes (stuck online status)
+        const isEffectivelyOffline = !isCurrentlyOnline || (isCurrentlyOnline && !wasRecentlyActive);
+
+        console.log(`📊 Respondent status analysis:`);
+        console.log(`   - Database isOnline: ${isCurrentlyOnline}`);
+        console.log(`   - Recently active (5min): ${wasRecentlyActive}`);
+        console.log(`   - Effectively offline: ${isEffectivelyOffline}`);
+
+        // AI responds if respondent is effectively offline
+        aiShouldRespond = isEffectivelyOffline;
 
         console.log(`👤 Assigned respondent ${ticketDocData.assignedTo}:`);
         console.log(`   - Currently online: ${isCurrentlyOnline}`);
-        console.log(`   - Recently active (${waitMinutes}min): ${wasRecentlyActive}`);
+        console.log(`   - Recently active (5min): ${wasRecentlyActive}`);
         console.log(`   - Respondent data:`, {
           isOnline: respondentData.isOnline,
           lastSeen: respondentData.lastSeen,
@@ -477,9 +570,10 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
       .get();
 
     const recentMessages = previousMessages.docs.map(doc => doc.data());
+    const aiWaitMinutes = company.aiWaitMinutes || 5; // Use configured wait time
     const hasRecentHumanResponse = recentMessages.some(msg =>
       msg.role === 'agent' && msg.createdAt &&
-      (msg.createdAt.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt)) > new Date(Date.now() - waitMinutes * 60 * 1000)
+      (msg.createdAt.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt)) > new Date(Date.now() - aiWaitMinutes * 60 * 1000)
     );
 
     if (hasRecentHumanResponse && company.notifyAiTakeover !== false) {
@@ -894,6 +988,92 @@ app.post("/agent/send-message", async (req, res) => {
   } catch (err) {
     console.error("❌ Error in /agent/send-message:", err);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Agent join notification endpoint
+app.post("/api/notifications/agent-join", async (req, res) => {
+  try {
+    const { companyId, customerId, agentName, ticketId } = req.body;
+
+    if (!companyId || !customerId || !agentName) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    console.log(`📢 Agent join notification: ${agentName} joining conversation with ${customerId}`);
+
+    // Get company settings
+    const companyRef = db.collection('companies').doc(companyId);
+    const companySnap = await companyRef.get();
+
+    if (!companySnap.exists) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    const company = companySnap.data();
+
+    // Send WhatsApp notification if enabled and configured
+    if (company.notifyAgentJoin !== false && company.twilioAccountSid && company.twilioAuthToken && company.twilioPhoneNumber) {
+      const twilioClient = twilio(company.twilioAccountSid, company.twilioAuthToken);
+
+      const notificationMessage = `👋 Hi! ${agentName} has joined our conversation. You can now chat directly with our human agent.`;
+
+      const toWhatsApp = customerId.startsWith("whatsapp:") ? customerId : `whatsapp:${customerId}`;
+      const fromWhatsApp = company.twilioPhoneNumber.startsWith("whatsapp:")
+        ? company.twilioPhoneNumber
+        : `whatsapp:${company.twilioPhoneNumber}`;
+
+      await twilioClient.messages.create({
+        from: fromWhatsApp,
+        to: toWhatsApp,
+        body: notificationMessage,
+      });
+
+      console.log(`📤 Sent agent join WhatsApp notification to ${toWhatsApp}`);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Error sending agent join notification:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Respondent status update endpoint (for sendBeacon reliability)
+app.post("/api/respondent/status", async (req, res) => {
+  try {
+    console.log('📡 sendBeacon endpoint called with body:', req.body);
+    const { email, companyId, action } = req.body;
+
+    if (!email || !companyId) {
+      console.log('❌ Missing required fields in sendBeacon request');
+      return res.status(400).send('Missing required fields');
+    }
+
+    console.log(`📡 Respondent status update via sendBeacon: ${email} -> ${action}`);
+
+    const companyRef = db.collection('companies').doc(companyId);
+    const respondentsRef = companyRef.collection('respondents');
+    const respondentQuery = await respondentsRef.where('email', '==', email).get();
+
+    if (!respondentQuery.empty) {
+      const respondentDoc = respondentQuery.docs[0];
+      const isOnline = action === 'online';
+
+      await respondentDoc.ref.update({
+        isOnline: isOnline,
+        lastSeen: isOnline ? new Date() : respondentDoc.data().lastSeen, // Don't update lastSeen when going offline
+      });
+
+      console.log(`✅ Respondent ${email} status updated to ${isOnline ? 'online' : 'offline'} via sendBeacon`);
+    } else {
+      console.log(`❌ Respondent ${email} not found in database`);
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('❌ Error updating respondent status via sendBeacon:', error);
+    res.status(500).send('Internal server error');
   }
 });
 
