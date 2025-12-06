@@ -8,18 +8,32 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 export default function DashboardPage() {
-  const { user, company, loading, logout, clearTwilioErrors } = useAuth();
+  const { user, company, respondents, userCompanies, respondentCompanies, selectedCompanyId, userRole, loading, logout, clearTwilioErrors, inviteRespondent, removeRespondent, selectCompanyContext } = useAuth();
   const router = useRouter();
   const [testMessage, setTestMessage] = useState('');
   const [testResult, setTestResult] = useState(null);
   const [isTesting, setIsTesting] = useState(false);
   const [errorConversationCount, setErrorConversationCount] = useState(0);
 
+  // User management state
+  const [newRespondentEmail, setNewRespondentEmail] = useState('');
+  const [invitingRespondent, setInvitingRespondent] = useState(false);
+  const [removingRespondent, setRemovingRespondent] = useState(null);
+  const [lastInvitation, setLastInvitation] = useState(null);
+  const [showCompanySwitcher, setShowCompanySwitcher] = useState(false);
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    // Handle redirects for users without company context
+    if (!loading && user && (!company || !selectedCompanyId)) {
+      router.push('/select-company');
+    }
+  }, [user, loading, company, selectedCompanyId, router]);
 
   useEffect(() => {
     const countErrorConversations = async () => {
@@ -90,6 +104,54 @@ export default function DashboardPage() {
     }
   };
 
+  const handleInviteRespondent = async (e) => {
+    e.preventDefault();
+    if (!newRespondentEmail.trim()) {
+      alert('Please enter an email address');
+      return;
+    }
+
+    try {
+      setInvitingRespondent(true);
+      const invitationResult = await inviteRespondent(newRespondentEmail.trim());
+      setNewRespondentEmail('');
+      setLastInvitation(invitationResult);
+
+      // Copy invitation URL to clipboard
+      if (invitationResult.invitationUrl) {
+        navigator.clipboard.writeText(invitationResult.invitationUrl);
+        alert('Invitation created! The invitation link has been copied to your clipboard. Share it with the respondent.');
+      } else {
+        alert('Respondent invitation created successfully!');
+      }
+    } catch (error) {
+      console.error('Error inviting respondent:', error);
+      alert(error.message);
+    } finally {
+      setInvitingRespondent(false);
+    }
+  };
+
+  const handleRemoveRespondent = async (respondentId) => {
+    if (!confirm('Are you sure you want to remove this respondent? They will lose access to all conversations.')) {
+      return;
+    }
+
+    try {
+      setRemovingRespondent(respondentId);
+      await removeRespondent(respondentId);
+      alert('Respondent removed successfully');
+    } catch (error) {
+      console.error('Error removing respondent:', error);
+      alert('Failed to remove respondent');
+    } finally {
+      setRemovingRespondent(null);
+    }
+  };
+
+  // Check if user is admin in current company context
+  const isAdmin = userRole === 'admin';
+
   if (loading) {
     return (
       <div style={{
@@ -104,8 +166,23 @@ export default function DashboardPage() {
     );
   }
 
-  if (!user || !company) {
-    return null;
+  if (!user) {
+    return null; // useEffect will handle redirect
+  }
+
+  if (!company || !selectedCompanyId) {
+    // User is logged in but no company context selected - useEffect handles redirect
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        fontSize: '18px'
+      }}>
+        Redirecting to company selection...
+      </div>
+    );
   }
 
   const isConfigured = company.twilioAccountSid && company.twilioAuthToken &&
@@ -125,8 +202,119 @@ export default function DashboardPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <h1 style={{ color: '#1976d2', margin: 0, fontSize: '1.5rem' }}>Axion</h1>
           <span style={{ color: '#666' }}>|</span>
-          <span style={{ color: '#666' }}>{company.name}</span>
+
+          {/* Company Switcher */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowCompanySwitcher(!showCompanySwitcher)}
+              style={{
+                backgroundColor: 'transparent',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                padding: '0.5rem 1rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              <span>{company?.name}</span>
+              <span style={{
+                backgroundColor: userRole === 'admin' ? '#4caf50' : '#2196f3',
+                color: 'white',
+                padding: '0.125rem 0.5rem',
+                borderRadius: '10px',
+                fontSize: '10px',
+                fontWeight: 'bold'
+              }}>
+                {userRole?.toUpperCase()}
+              </span>
+              <span>{showCompanySwitcher ? '▲' : '▼'}</span>
+            </button>
+
+            {showCompanySwitcher && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                backgroundColor: 'white',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                minWidth: '250px',
+                zIndex: 1000,
+                marginTop: '0.25rem'
+              }}>
+                {/* Current Company */}
+                <div style={{
+                  padding: '0.75rem 1rem',
+                  borderBottom: '1px solid #eee',
+                  backgroundColor: '#f8f9fa'
+                }}>
+                  <div style={{ fontWeight: 'bold', color: '#333' }}>{company?.name}</div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>
+                    Current: {userRole === 'admin' ? 'Administrator' : 'Respondent'}
+                  </div>
+                </div>
+
+                {/* Other Companies */}
+                {[...userCompanies.filter(c => c.id !== selectedCompanyId),
+                  ...respondentCompanies.filter(c => c.id !== selectedCompanyId)].map((comp) => (
+                  <button
+                    key={`${comp.userRole}-${comp.id}`}
+                    onClick={async () => {
+                      await selectCompanyContext(comp.id, comp.userRole);
+                      setShowCompanySwitcher(false);
+                      // Reload the page to refresh all data
+                      window.location.reload();
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      border: 'none',
+                      backgroundColor: 'transparent',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid #f0f0f0'
+                    }}
+                    onMouseOver={(e) => e.target.style.backgroundColor = '#f8f9fa'}
+                    onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                  >
+                    <div style={{ fontWeight: 'bold', color: '#333' }}>{comp.name}</div>
+                    <div style={{
+                      fontSize: '12px',
+                      color: comp.userRole === 'admin' ? '#4caf50' : '#2196f3'
+                    }}>
+                      {comp.userRole === 'admin' ? 'Administrator' : 'Respondent'}
+                    </div>
+                  </button>
+                ))}
+
+                <button
+                  onClick={() => {
+                    setShowCompanySwitcher(false);
+                    router.push('/select-company');
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    color: '#666',
+                    fontSize: '14px'
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#f8f9fa'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                  + Switch Company
+                </button>
+              </div>
+            )}
+          </div>
         </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <span style={{ color: '#666', fontSize: '14px' }}>{user.email}</span>
           <button
@@ -370,6 +558,177 @@ export default function DashboardPage() {
             )}
           </div>
 
+          {/* User Management Section - Admin Only */}
+          {isAdmin && (
+            <div style={{
+              backgroundColor: 'white',
+              padding: '2rem',
+              borderRadius: '8px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              marginBottom: '2rem'
+            }}>
+              <h3 style={{ marginTop: 0, color: '#333' }}>👥 Team Management</h3>
+              <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+                Invite and manage respondents who can help handle your WhatsApp conversations.
+              </p>
+
+              {/* Invite New Respondent */}
+              <div style={{ marginBottom: '2rem' }}>
+                <h4 style={{ color: '#333', marginBottom: '1rem' }}>Invite New Respondent</h4>
+                <form onSubmit={handleInviteRespondent} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <input
+                    type="email"
+                    placeholder="respondent@gmail.com"
+                    value={newRespondentEmail}
+                    onChange={(e) => setNewRespondentEmail(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '16px'
+                    }}
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={invitingRespondent || !newRespondentEmail.trim()}
+                    style={{
+                      padding: '0.75rem 1.5rem',
+                      backgroundColor: '#4caf50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: invitingRespondent || !newRespondentEmail.trim() ? 'not-allowed' : 'pointer',
+                      opacity: invitingRespondent || !newRespondentEmail.trim() ? 0.7 : 1
+                    }}
+                  >
+                    {invitingRespondent ? 'Inviting...' : 'Invite'}
+                  </button>
+                </form>
+                <small style={{ color: '#666' }}>
+                  Respondents must use Gmail addresses only. They'll receive an invitation link to join your team.
+                </small>
+
+                {/* Show last invitation */}
+                {lastInvitation && (
+                  <div style={{
+                    marginTop: '1rem',
+                    padding: '1rem',
+                    backgroundColor: '#e8f5e8',
+                    border: '1px solid #4caf50',
+                    borderRadius: '4px'
+                  }}>
+                    <h4 style={{ marginTop: 0, color: '#4caf50' }}>✅ Invitation Created!</h4>
+                    <p style={{ margin: '0.5rem 0', color: '#666' }}>
+                      <strong>Email:</strong> {lastInvitation.email}
+                    </p>
+                    <p style={{ margin: '0.5rem 0', color: '#666' }}>
+                      <strong>Invitation Link:</strong>
+                    </p>
+                    <div style={{
+                      backgroundColor: '#f5f5f5',
+                      padding: '0.5rem',
+                      borderRadius: '4px',
+                      fontFamily: 'monospace',
+                      fontSize: '12px',
+                      wordBreak: 'break-all',
+                      marginBottom: '0.5rem'
+                    }}>
+                      {lastInvitation.invitationUrl}
+                    </div>
+                    <p style={{ fontSize: '14px', color: '#666', marginBottom: '0.5rem' }}>
+                      Share this link with the respondent. The link has been copied to your clipboard.
+                    </p>
+                    <button
+                      onClick={() => setLastInvitation(null)}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#666',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Current Respondents */}
+              <div>
+                <h4 style={{ color: '#333', marginBottom: '1rem' }}>Current Team Members</h4>
+                {respondents.length === 0 ? (
+                  <p style={{ color: '#666', fontStyle: 'italic' }}>
+                    No respondents invited yet. Conversations will be handled by you (admin) until you add team members.
+                  </p>
+                ) : (
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>
+                    {respondents.map((respondent) => (
+                      <div key={respondent.id} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '1rem',
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '4px',
+                        backgroundColor: '#fafafa'
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: 'bold', color: '#333' }}>
+                            {respondent.email}
+                          </div>
+                          <div style={{ fontSize: '14px', color: '#666' }}>
+                            Status: <span style={{
+                              color: respondent.status === 'active' ? '#4caf50' :
+                                     respondent.status === 'invited' ? '#ff9800' : '#f44336'
+                            }}>
+                              {respondent.status === 'active' ? 'Active' :
+                               respondent.status === 'invited' ? 'Invited (pending acceptance)' : respondent.status}
+                            </span>
+                            {respondent.status === 'active' && (
+                              <span style={{
+                                marginLeft: '0.5rem',
+                                color: respondent.isOnline ? '#4caf50' : '#ff9800',
+                                fontSize: '0.8rem'
+                              }}>
+                                {respondent.isOnline ? '🟢 Online' : '🟡 Offline'}
+                              </span>
+                            )}
+                          </div>
+                          {respondent.invitedAt && (
+                            <div style={{ fontSize: '12px', color: '#999' }}>
+                              Invited: {respondent.invitedAt.toDate ? respondent.invitedAt.toDate().toLocaleDateString() : new Date(respondent.invitedAt).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveRespondent(respondent.id)}
+                          disabled={removingRespondent === respondent.id}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: '#f44336',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: removingRespondent === respondent.id ? 'not-allowed' : 'pointer',
+                            opacity: removingRespondent === respondent.id ? 0.7 : 1,
+                            fontSize: '14px'
+                          }}
+                        >
+                          {removingRespondent === respondent.id ? 'Removing...' : 'Remove'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Action Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
             <Link href="/inbox" style={{ textDecoration: 'none' }}>
@@ -392,12 +751,16 @@ export default function DashboardPage() {
               }}>
                 <h3 style={{ marginTop: 0, color: '#1976d2' }}>📱 Inbox</h3>
                 <p style={{ color: '#666', marginBottom: 0 }}>
-                  View and manage WhatsApp conversations with your AI assistant.
+                  {isAdmin
+                    ? 'View and manage all WhatsApp conversations.'
+                    : 'View and respond to conversations assigned to you.'
+                  }
                 </p>
               </div>
             </Link>
 
-            <Link href="/settings" style={{ textDecoration: 'none' }}>
+            {isAdmin && (
+              <Link href="/settings" style={{ textDecoration: 'none' }}>
               <div style={{
                 backgroundColor: 'white',
                 padding: '2rem',
@@ -421,6 +784,7 @@ export default function DashboardPage() {
                 </p>
               </div>
             </Link>
+            )}
           </div>
         </div>
       </main>

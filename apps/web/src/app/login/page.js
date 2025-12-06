@@ -5,14 +5,31 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth-context';
 
 export default function LoginPage() {
-  const { user, loading, signInWithGoogle } = useAuth();
+  const { user, userCompanies, respondentCompanies, selectedCompanyId, loading, contextLoading, signInWithGoogle } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && user) {
-      router.push('/dashboard');
+    // Wait for both auth loading and context loading to complete
+    if (!loading && !contextLoading && user) {
+      // Check if user has multiple companies/roles
+      const allCompanies = [...userCompanies, ...respondentCompanies];
+
+      if (allCompanies.length > 1 && !selectedCompanyId) {
+        // Multiple companies - let user choose
+        router.push('/select-company');
+      } else if (allCompanies.length === 1 && !selectedCompanyId) {
+        // Single company - auto-select it
+        // The auth context useEffect will handle this
+        router.push('/dashboard');
+      } else if (allCompanies.length === 0) {
+        // No companies - needs onboarding
+        router.push('/onboarding');
+      } else {
+        // Has selected company
+        router.push('/dashboard');
+      }
     }
-  }, [user, loading, router]);
+  }, [user, userCompanies, respondentCompanies, selectedCompanyId, loading, contextLoading, router]);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -23,16 +40,22 @@ export default function LoginPage() {
     }
   };
 
-  if (loading) {
+  if (loading || contextLoading) {
     return (
       <div style={{
         display: 'flex',
-        justifyContent: 'center',
+        flexDirection: 'column',
         alignItems: 'center',
+        justifyContent: 'center',
         height: '100vh',
         fontSize: '18px'
       }}>
-        Loading...
+        <div style={{ marginBottom: '1rem' }}>
+          {loading ? 'Signing you in...' : 'Loading your companies...'}
+        </div>
+        <div style={{ fontSize: '14px', color: '#666' }}>
+          Setting up your workspace
+        </div>
       </div>
     );
   }

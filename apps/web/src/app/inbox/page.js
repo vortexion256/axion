@@ -18,71 +18,366 @@ import {
 } from "firebase/firestore";
 
 export default function InboxPage() {
-  const { user, company, loading } = useAuth();
+  const { user, company, loading, userRole, userCompanies, respondentCompanies, selectedCompanyId, selectCompanyContext, updateRespondentStatus } = useAuth();
+  const isAdmin = userRole === 'admin';
+  const isRespondent = userRole === 'respondent';
   const router = useRouter();
-  const [conversations, setConversations] = useState([]);
-  const [selectedConv, setSelectedConv] = useState(null);
+  const [tickets, setTickets] = useState([]);
+  const [selectedTicket, setSelectedTicket] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [customerHistory, setCustomerHistory] = useState([]);
+  const [historicalMessages, setHistoricalMessages] = useState({});
   const [agentMessage, setAgentMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isTogglingAI, setIsTogglingAI] = useState(false);
+  const [newAssignments, setNewAssignments] = useState(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [debugMode, setDebugMode] = useState(false); // Temporary debug mode
+  const [loadingError, setLoadingError] = useState(null);
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
+  const [expandedHistory, setExpandedHistory] = useState(new Set()); // Track which historical tickets are expanded
+  const [showCumulativeHistory, setShowCumulativeHistory] = useState(false); // Toggle for cumulative view
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Loading timeout - show error if page doesn't load within 30 seconds
+  useEffect(() => {
+    if (!loading) return; // Don't set timeout if not loading
+
+    console.log('Starting loading timeout timer...');
+
+    const timeout = setTimeout(() => {
+      console.error('Inbox loading timeout - page stuck in loading state');
+      console.log('Network status:', navigator.onLine ? 'Online' : 'Offline');
+      console.log('Auth loading state:', loading);
+      console.log('Company:', company ? 'Loaded' : 'Not loaded');
+      console.log('User:', user ? user.email : 'Not logged in');
+
+      setLoadingTimeout(true);
+      setLoadingError('Loading timeout. Please check your internet connection and refresh the page.');
+    }, 30000); // 30 seconds
+
+    return () => {
+      console.log('Clearing loading timeout');
+      clearTimeout(timeout);
+    };
+  }, [loading, company, user]);
+
+  // Set initial online status for respondents
+  useEffect(() => {
+    if (isRespondent && !loading && user?.email) {
+      console.log(`🟢 [${new Date().toISOString()}] Setting respondent ${user.email} as online initially`);
+      // Don't await - fire and forget to prevent blocking
+      updateRespondentStatus(true).catch(error => {
+        console.error('Failed to set initial online status:', error);
+      });
+      setIsOnline(true);
+
+      // Set up periodic online status updates every 1.5 minutes (90 seconds)
+      const interval = setInterval(() => {
+        if (isOnline) {
+          updateRespondentStatus(true).catch(error => {
+            console.error('Failed to update periodic online status:', error);
+          });
+        }
+      }, 90000); // 90 seconds (1.5 minutes)
+
+      return () => clearInterval(interval);
+    }
+  }, [isRespondent, loading, user?.email]); // Removed updateRespondentStatus from deps to prevent loops
+
+  // Update online status when it changes
+  useEffect(() => {
+    if (isRespondent && !loading) {
+      // Don't await - fire and forget to prevent blocking
+      updateRespondentStatus(isOnline).catch(error => {
+        console.error('Failed to update online status:', error);
+      });
+    }
+  }, [isOnline, isRespondent, loading]); // Removed updateRespondentStatus from deps
+
+  // Handle page visibility changes for auto online/offline status
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (isRespondent) {
+        setIsOnline(!document.hidden);
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      if (isRespondent) {
+        updateRespondentStatus(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isRespondent, updateRespondentStatus]);
+
+  // Function to show browser notification
+  const showAssignmentNotification = (ticket) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const notification = new Notification('New Ticket Assigned', {
+        body: `You have been assigned a new ticket from ${ticket.customerId || 'Unknown'}`,
+        icon: '/favicon.ico',
+        tag: `ticket-${ticket.id}` // Prevents duplicate notifications
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        setSelectedTicket(ticket);
+        notification.close();
+      };
+
+      // Auto-close after 5 seconds
+      setTimeout(() => notification.close(), 5000);
+    }
+  };
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
+      return;
     }
-  }, [user, loading, router]);
+
+    // If user is logged in but no company context, redirect to appropriate place
+    if (!loading && user && (!company || !selectedCompanyId)) {
+      const allCompanies = [...userCompanies, ...respondentCompanies];
+      if (allCompanies.length === 0) {
+        router.push('/onboarding');
+      } else if (allCompanies.length > 1) {
+        router.push('/select-company');
+      } else if (allCompanies.length === 1) {
+        // Auto-select single company
+        const selectedCompany = allCompanies[0];
+        selectCompanyContext(selectedCompany.id, selectedCompany.userRole)
+          .then(() => {
+            console.log('Auto-selected company in inbox');
+          })
+          .catch(error => {
+            console.error('Failed to auto-select company:', error);
+            router.push('/select-company');
+          });
+      }
+    }
+  }, [user, loading, company, selectedCompanyId, userCompanies, respondentCompanies, router, selectCompanyContext]);
 
   const tenantId = company?.id;
 
-  useEffect(() => {
-    if (!tenantId) return;
+  console.log('Inbox render - Company:', company ? 'Loaded' : 'Not loaded');
+  console.log('Inbox render - Tenant ID:', tenantId);
 
-    const convRef = collection(db, "companies", tenantId, "conversations");
-    const q = query(convRef, orderBy("lastUpdated", "desc"));
+  useEffect(() => {
+    if (!tenantId) {
+      console.log('Inbox: No tenant ID, skipping conversation loading');
+      return;
+    }
+
+    const ticketsRef = collection(db, "companies", tenantId, "tickets");
+    let q = query(ticketsRef, orderBy("updatedAt", "desc"));
+
+    console.log('Loading conversations for:', {
+      tenantId,
+      userRole,
+      userEmail: user?.email,
+      isAdmin,
+      isRespondent
+    });
+
+    // For respondents, only show tickets assigned to them (unless in debug mode)
+    if (isRespondent && user?.email && !debugMode) {
+      console.log('Filtering tickets for respondent:', user.email);
+      try {
+        q = query(ticketsRef,
+          where("assignedEmail", "==", user.email),
+          orderBy("updatedAt", "desc")
+        );
+        console.log('Query created for respondent email:', user.email);
+      } catch (error) {
+        console.error('Error creating query for respondent:', error);
+        // Fallback: show all tickets for debugging
+        q = query(ticketsRef, orderBy("updatedAt", "desc"));
+        console.log('Fallback: showing all tickets due to query error');
+      }
+    } else if (isRespondent && !debugMode) {
+      console.log('Respondent but no email found:', user);
+      // Fallback for respondents without email
+      q = query(ticketsRef, orderBy("updatedAt", "desc"));
+    }
+    // In debug mode or for admins, show all conversations
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const conversationsWithErrors = await Promise.all(
-        snapshot.docs.map(async (doc) => {
-          const convData = { id: doc.id, ...doc.data() };
+      try {
+        const ticketsWithErrors = await Promise.all(
+          snapshot.docs.map(async (doc) => {
+            const ticketData = { id: doc.id, ...doc.data() };
 
-          // Check if this conversation has any error messages
-          const messagesRef = collection(db, "companies", tenantId, "conversations", doc.id, "messages");
-          const errorQuery = query(messagesRef, where("error", "==", true), limit(1));
-          const errorSnapshot = await getDocs(errorQuery);
+            try {
+              // Check if this ticket has any error messages
+              const messagesRef = collection(db, "companies", tenantId, "tickets", doc.id, "messages");
+              const errorQuery = query(messagesRef, where("error", "==", true), limit(1));
+              const errorSnapshot = await getDocs(errorQuery);
 
-          convData.hasErrors = !errorSnapshot.empty;
-          return convData;
-        })
-      );
+              ticketData.hasErrors = !errorSnapshot.empty;
+            } catch (error) {
+              console.error(`Error checking messages for ticket ${doc.id}:`, error);
+              ticketData.hasErrors = false;
+            }
 
-      setConversations(conversationsWithErrors);
+            return ticketData;
+          })
+        );
+
+        // Check for new assignments and show notifications
+        const previousTicketIds = new Set(tickets.map(t => t.id));
+        const newTickets = ticketsWithErrors.filter(ticket =>
+          !previousTicketIds.has(ticket.id) &&
+          (isAdmin || (isRespondent && ticket.assignedEmail === user.email))
+        );
+
+        // Show notifications for new assignments
+        newTickets.forEach(ticket => {
+          console.log('New ticket detected:', {
+            id: ticket.id,
+            assignedTo: ticket.assignedTo,
+            assignedEmail: ticket.assignedEmail,
+            isRespondent,
+            userEmail: user?.email
+          });
+
+          if (isRespondent && ticket.assignedEmail === user.email) {
+            console.log('Showing notification for respondent assignment');
+            showAssignmentNotification(ticket);
+            setNewAssignments(prev => new Set([...prev, ticket.id]));
+          }
+        });
+
+        console.log(`Loaded ${ticketsWithErrors.length} tickets:`,
+          ticketsWithErrors.map(t => ({
+            id: t.id,
+            customerId: t.customerId,
+            assignedTo: t.assignedTo,
+            assignedEmail: t.assignedEmail,
+            status: t.status
+          }))
+        );
+
+        setTickets(ticketsWithErrors);
+        setLoadingError(null); // Clear any previous errors on successful load
+      } catch (error) {
+        console.error('Error loading conversations:', error);
+        setLoadingError('Failed to load conversations. Please check your connection.');
+      }
     });
 
     return () => unsubscribe();
-  }, [tenantId]);
+  }, [tenantId, isRespondent, user?.email, debugMode]);
 
   useEffect(() => {
-    if (!selectedConv || !tenantId) return;
+    if (!selectedTicket || !tenantId) return;
 
     const messagesRef = collection(
       db,
       "companies",
       tenantId,
-      "conversations",
-      selectedConv.id,
+      "tickets",
+      selectedTicket.id,
       "messages"
     );
 
     const q = query(messagesRef, orderBy("createdAt", "asc"));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      try {
+        setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error('Error loading messages:', error);
+      }
     });
 
     return () => unsubscribe();
-  }, [selectedConv, tenantId]);
+  }, [selectedTicket, tenantId]);
+
+  // Load customer history when ticket is selected
+  useEffect(() => {
+    if (!selectedTicket || !tenantId) {
+      setCustomerHistory([]);
+      setHistoricalMessages({});
+      return;
+    }
+
+    const loadCustomerHistory = async () => {
+      try {
+        // Get all tickets for this customer (excluding current ticket)
+        const customerTicketsRef = collection(db, "companies", tenantId, "tickets");
+        const customerQuery = query(
+          customerTicketsRef,
+          where("customerId", "==", selectedTicket.customerId),
+          where("status", "in", ["closed", "pending"]), // Show closed and pending tickets
+          orderBy("updatedAt", "desc")
+        );
+
+        const customerSnap = await getDocs(customerQuery);
+        const historyTickets = customerSnap.docs
+          .filter(doc => doc.id !== selectedTicket.id) // Exclude current ticket
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .slice(0, 3); // Limit to last 3 tickets to avoid overwhelming
+
+        // Load ALL messages for each historical ticket
+        const historyWithMessages = {};
+        const historyTicketsData = await Promise.all(
+          historyTickets.map(async (ticket) => {
+            try {
+              const ticketMessagesRef = collection(db, "companies", tenantId, "tickets", ticket.id, "messages");
+              const allMessagesQuery = query(ticketMessagesRef, orderBy("createdAt", "asc"));
+              const allMessagesSnap = await getDocs(allMessagesQuery);
+
+              const ticketMessages = allMessagesSnap.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              }));
+
+              historyWithMessages[ticket.id] = ticketMessages;
+
+              return {
+                ...ticket,
+                messageCount: ticketMessages.length,
+                firstMessage: ticketMessages.length > 0 ? ticketMessages[0].body?.substring(0, 50) + "..." : "No messages"
+              };
+            } catch (error) {
+              console.error(`Error loading messages for ticket ${ticket.id}:`, error);
+              historyWithMessages[ticket.id] = [];
+              return {
+                ...ticket,
+                messageCount: 0,
+                firstMessage: "Error loading messages"
+              };
+            }
+          })
+        );
+
+        setCustomerHistory(historyTicketsData);
+        setHistoricalMessages(historyWithMessages);
+      } catch (error) {
+        console.error('Error loading customer history:', error);
+        setCustomerHistory([]);
+        setHistoricalMessages({});
+      }
+    };
+
+    loadCustomerHistory();
+  }, [selectedTicket, tenantId]);
 
   const apiBase =
     process.env.NEXT_PUBLIC_API_BASE_URL || "https://ellen-nonabridgable-samual.ngrok-free.dev";
@@ -91,10 +386,10 @@ export default function InboxPage() {
   console.log("NEXT_PUBLIC_API_BASE_URL:", process.env.NEXT_PUBLIC_API_BASE_URL);
 
   async function handleToggleAI() {
-    if (!selectedConv) return;
+    if (!selectedTicket) return;
     try {
       setIsTogglingAI(true);
-      const current = selectedConv.aiEnabled !== false; // missing => true
+      const current = selectedTicket.aiEnabled !== false; // missing => true
       const enable = !current;
 
       const resp = await fetch(`${apiBase}/agent/toggle-ai`, {
@@ -103,7 +398,7 @@ export default function InboxPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          convId: selectedConv.id,
+          convId: selectedTicket.id, // convId is actually ticketId in the new system
           enable,
           tenantId, // Pass tenant ID to API
         }),
@@ -114,11 +409,11 @@ export default function InboxPage() {
         console.error("Error toggling AI:", txt);
         alert("Failed to toggle AI. Check API logs for details.");
       } else {
-        setSelectedConv({ ...selectedConv, aiEnabled: enable });
+        setSelectedTicket({ ...selectedTicket, aiEnabled: enable });
       }
     } catch (err) {
       console.error("Error toggling AI:", err);
-      alert("Failed to toggle AI for this conversation.");
+      alert("Failed to toggle AI for this ticket.");
     } finally {
       setIsTogglingAI(false);
     }
@@ -126,13 +421,13 @@ export default function InboxPage() {
 
   async function handleSendAgentMessage(e) {
     e?.preventDefault();
-    if (!selectedConv || !agentMessage.trim()) return;
+    if (!selectedTicket || !agentMessage.trim()) return;
 
     try {
       setIsSending(true);
       console.log("Sending to API:", `${apiBase}/agent/send-message`);
       console.log("Request data:", {
-        convId: selectedConv.id,
+        convId: selectedTicket.id,
         body: agentMessage.trim(),
         tenantId
       });
@@ -143,9 +438,11 @@ export default function InboxPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          convId: selectedConv.id,
+          convId: selectedTicket.id, // convId is actually ticketId in the new system
           body: agentMessage.trim(),
           tenantId, // Pass tenant ID to API
+          userName: user?.displayName || user?.email?.split('@')[0] || 'Agent',
+          userEmail: user?.email,
         }),
       });
 
@@ -167,49 +464,107 @@ export default function InboxPage() {
     }
   }
 
-  async function handleDeleteConversation() {
-    if (!selectedConv) return;
+  async function handleDeleteTicket() {
+    if (!selectedTicket) return;
 
-    if (!confirm(`Are you sure you want to delete this conversation with ${selectedConv.participants?.[0] || 'Unknown'}? This action cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to delete this ticket with ${selectedTicket.customerId || 'Unknown'}? This action cannot be undone.`)) {
       return;
     }
 
     try {
       setIsDeleting(true);
 
-      // Delete all messages in the conversation
-      const messagesRef = collection(db, "companies", tenantId, "conversations", selectedConv.id, "messages");
+      // Delete all messages in the ticket
+      const messagesRef = collection(db, "companies", tenantId, "tickets", selectedTicket.id, "messages");
       const messagesSnap = await getDocs(messagesRef);
 
       const deletePromises = messagesSnap.docs.map(doc => deleteDoc(doc.ref));
       await Promise.all(deletePromises);
 
-      // Delete the conversation document
-      const convRef = doc(db, "companies", tenantId, "conversations", selectedConv.id);
-      await deleteDoc(convRef);
+      // Delete the ticket document
+      const ticketRef = doc(db, "companies", tenantId, "tickets", selectedTicket.id);
+      await deleteDoc(ticketRef);
 
-      setSelectedConv(null);
+      setSelectedTicket(null);
       setMessages([]);
-      alert("Conversation deleted successfully.");
+      alert("Ticket deleted successfully.");
 
     } catch (err) {
-      console.error("Error deleting conversation:", err);
-      alert("Failed to delete conversation. Check console for details.");
+      console.error("Error deleting ticket:", err);
+      alert("Failed to delete ticket. Check console for details.");
     } finally {
       setIsDeleting(false);
     }
   }
 
   if (loading || !company) {
+    if (loadingTimeout) {
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          padding: '2rem',
+          textAlign: 'center'
+        }}>
+          <h2 style={{ color: '#f44336', marginBottom: '1rem' }}>⚠️ Loading Timeout</h2>
+          <p style={{ color: '#666', marginBottom: '2rem' }}>
+            The inbox is taking too long to load. This might be due to network issues or authentication problems.
+          </p>
+          {loadingError && (
+            <p style={{ color: '#f44336', marginBottom: '2rem', fontSize: '14px' }}>
+              Error: {loadingError}
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: '#1976d2',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '16px'
+              }}
+            >
+              🔄 Retry Loading
+            </button>
+            <button
+              onClick={() => window.location.href = '/dashboard'}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: '#f5f5f5',
+                color: '#333',
+                border: '1px solid #ddd',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '16px'
+              }}
+            >
+              ← Back to Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div style={{
         display: 'flex',
-        justifyContent: 'center',
+        flexDirection: 'column',
         alignItems: 'center',
+        justifyContent: 'center',
         height: '100vh',
         fontSize: '18px'
       }}>
-        Loading...
+        <div style={{ marginBottom: '1rem' }}>Loading inbox...</div>
+        <div style={{ fontSize: '14px', color: '#666' }}>
+          Setting up conversations and notifications
+        </div>
       </div>
     );
   }
@@ -225,42 +580,176 @@ export default function InboxPage() {
           flexDirection: "column",
         }}
       >
-        <h2>Conversations</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <h2>Tickets</h2>
+            <span style={{ fontSize: "0.8rem", color: "#666" }}>
+              ({tickets.length} total)
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            {isRespondent && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "0.8rem", color: "#666" }}>Status:</span>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button
+                    onClick={() => setIsOnline(!isOnline)}
+                    style={{
+                      backgroundColor: isOnline ? "#4caf50" : "#f44336",
+                      color: "white",
+                      border: "none",
+                      padding: "0.25rem 0.75rem",
+                      borderRadius: "15px",
+                      fontSize: "0.7rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      transition: "all 0.2s"
+                    }}
+                    title={isOnline ? "Click to go offline" : "Click to go online"}
+                  >
+                    <span style={{ fontSize: "0.6rem" }}>{isOnline ? "●" : "○"}</span>
+                    {isOnline ? "Online" : "Offline"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      console.log('Manually setting online...');
+                      updateRespondentStatus(true);
+                      setIsOnline(true);
+                    }}
+                    style={{
+                      backgroundColor: "#2196f3",
+                      color: "white",
+                      border: "none",
+                      padding: "0.25rem 0.5rem",
+                      borderRadius: "4px",
+                      fontSize: "0.6rem",
+                      cursor: "pointer"
+                    }}
+                    title="Force online status update"
+                  >
+                    🔄 Force Online
+                  </button>
+                </div>
+              </div>
+            )}
+            {'Notification' in window && Notification.permission === 'default' && (
+              <button
+                onClick={() => Notification.requestPermission()}
+                style={{
+                  backgroundColor: "#2196f3",
+                  color: "white",
+                  border: "none",
+                  padding: "0.25rem 0.5rem",
+                  borderRadius: "4px",
+                  fontSize: "0.7rem",
+                  cursor: "pointer"
+                }}
+                title="Enable notifications for new assignments"
+              >
+                🔔 Enable
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                onClick={() => setDebugMode(!debugMode)}
+                style={{
+                  backgroundColor: debugMode ? "#ff9800" : "#666",
+                  color: "white",
+                  border: "none",
+                  padding: "0.25rem 0.5rem",
+                  borderRadius: "4px",
+                  fontSize: "0.7rem",
+                  cursor: "pointer"
+                }}
+                title={debugMode ? "Exit debug mode" : "Enter debug mode (see all conversations)"}
+              >
+                {debugMode ? "🐛 Debug" : "🔍 Debug"}
+              </button>
+            )}
+            {newAssignments.size > 0 && (
+              <div style={{
+                backgroundColor: "#4caf50",
+                color: "white",
+                padding: "0.25rem 0.5rem",
+                borderRadius: "10px",
+                fontSize: "0.75rem",
+                fontWeight: "bold"
+              }}>
+                {newAssignments.size} New
+              </div>
+            )}
+          </div>
+        </div>
         <div style={{ flex: 1, overflowY: "auto", marginTop: "0.5rem" }}>
-          {conversations.map((conv) => (
+          {tickets.map((ticket) => (
             <div
-              key={conv.id}
+              key={ticket.id}
               style={{
                 padding: "0.5rem",
                 cursor: "pointer",
-                backgroundColor: selectedConv?.id === conv.id ? "#e0f7fa" : "",
+                backgroundColor: selectedTicket?.id === ticket.id ? "#e0f7fa" : "",
                 borderRadius: "4px",
                 marginBottom: "0.25rem",
-                border: conv.hasErrors ? "2px solid #f44336" : "1px solid transparent",
+                border: ticket.hasErrors ? "2px solid #f44336" : "1px solid transparent",
               }}
-              onClick={() => setSelectedConv(conv)}
+              onClick={() => {
+                setSelectedTicket(ticket);
+                // Clear new assignment indicator
+                if (newAssignments.has(ticket.id)) {
+                  setNewAssignments(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(ticket.id);
+                    return newSet;
+                  });
+                }
+              }}
             >
               <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                {conv.participants?.[0] || "Unknown"}
-                {conv.hasErrors && (
+                {ticket.customerId || "Unknown"}
+                <span style={{
+                  fontSize: "0.7rem",
+                  padding: "0.1rem 0.3rem",
+                  borderRadius: "3px",
+                  backgroundColor: ticket.status === "open" ? "#4caf50" :
+                                   ticket.status === "pending" ? "#ff9800" : "#f44336",
+                  color: "white"
+                }}>
+                  {ticket.status || "open"}
+                </span>
+                {ticket.hasErrors && (
                   <span style={{ color: "#f44336", fontSize: "0.8rem" }}>⚠️</span>
+                )}
+                {newAssignments.has(ticket.id) && (
+                  <span style={{ color: "#4caf50", fontSize: "0.8rem" }}>🔔</span>
                 )}
               </div>
               <div style={{ fontSize: "0.75rem", color: "#666" }}>
-                {conv.lastUpdated
-                  ? new Date(conv.lastUpdated.seconds * 1000).toLocaleString()
+                {ticket.lastMessage && (
+                  <div style={{ marginBottom: "0.25rem" }}>
+                    "{ticket.lastMessage.length > 50 ? ticket.lastMessage.substring(0, 50) + "..." : ticket.lastMessage}"
+                  </div>
+                )}
+                {ticket.updatedAt
+                  ? new Date(ticket.updatedAt.seconds * 1000).toLocaleString()
                   : ""}
-                {conv.hasErrors && (
+                {ticket.hasErrors && (
                   <span style={{ color: "#f44336", marginLeft: "0.5rem" }}>
                     (Delivery Error)
                   </span>
+                )}
+                {isAdmin && ticket.assignedTo && (
+                  <div style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.25rem" }}>
+                    Assigned to: {ticket.assignedTo}
+                  </div>
                 )}
               </div>
             </div>
           ))}
         </div>
 
-        {selectedConv && (
+        {selectedTicket && (
           <div
             style={{
               marginTop: "0.75rem",
@@ -268,47 +757,86 @@ export default function InboxPage() {
               borderTop: "1px solid #eee",
             }}
           >
-            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
-              <div style={{ fontSize: "0.85rem" }}>
-                <strong>AI status:</strong>{" "}
-                {selectedConv.aiEnabled === false ? "Off" : "On"}
+            {isAdmin && (
+              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexDirection: "column" }}>
+                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <div style={{ fontSize: "0.85rem" }}>
+                    <strong>Status:</strong>
+                  </div>
+                  <select
+                    value={selectedTicket.status || "open"}
+                    onChange={async (e) => {
+                      try {
+                        const newStatus = e.target.value;
+                        const ticketRef = doc(db, "companies", tenantId, "tickets", selectedTicket.id);
+                        await updateDoc(ticketRef, {
+                          status: newStatus,
+                          updatedAt: new Date()
+                        });
+                        setSelectedTicket({ ...selectedTicket, status: newStatus });
+                      } catch (error) {
+                        console.error("Error updating ticket status:", error);
+                        alert("Failed to update ticket status");
+                      }
+                    }}
+                    style={{
+                      padding: "0.25rem",
+                      fontSize: "0.75rem",
+                      borderRadius: "3px",
+                      border: "1px solid #ccc",
+                    }}
+                  >
+                    <option value="open">Open</option>
+                    <option value="pending">Pending</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <div style={{ fontSize: "0.85rem" }}>
+                    <strong>AI status:</strong>{" "}
+                    {selectedTicket.aiEnabled === false ? "Off" : "On"}
+                  </div>
+                  <button
+                    onClick={handleToggleAI}
+                    disabled={isTogglingAI}
+                    style={{
+                      padding: "0.25rem 0.5rem",
+                      fontSize: "0.75rem",
+                      borderRadius: "3px",
+                      border: "1px solid #ccc",
+                      backgroundColor:
+                        selectedTicket.aiEnabled === false ? "#e0f7fa" : "#ffe0e0",
+                      cursor: isTogglingAI ? "default" : "pointer",
+                    }}
+                  >
+                    {isTogglingAI
+                      ? "Updating..."
+                      : selectedTicket.aiEnabled === false
+                      ? "Turn AI On"
+                      : "Turn AI Off"}
+                  </button>
+                </div>
               </div>
+            )}
+
+            {isAdmin && (
               <button
-                onClick={handleToggleAI}
-                disabled={isTogglingAI}
+                onClick={handleDeleteTicket}
+                disabled={isDeleting}
                 style={{
                   padding: "0.25rem 0.5rem",
                   fontSize: "0.75rem",
                   borderRadius: "3px",
-                  border: "1px solid #ccc",
-                  backgroundColor:
-                    selectedConv.aiEnabled === false ? "#e0f7fa" : "#ffe0e0",
-                  cursor: isTogglingAI ? "default" : "pointer",
+                  border: "1px solid #f44336",
+                  backgroundColor: "#ffeaea",
+                  color: "#f44336",
+                  cursor: isDeleting ? "default" : "pointer",
                 }}
               >
-                {isTogglingAI
-                  ? "Updating..."
-                  : selectedConv.aiEnabled === false
-                  ? "Turn AI On"
-                  : "Turn AI Off"}
+                {isDeleting ? "Deleting..." : "🗑️ Delete Ticket"}
               </button>
-            </div>
-
-            <button
-              onClick={handleDeleteConversation}
-              disabled={isDeleting}
-              style={{
-                padding: "0.25rem 0.5rem",
-                fontSize: "0.75rem",
-                borderRadius: "3px",
-                border: "1px solid #f44336",
-                backgroundColor: "#ffeaea",
-                color: "#f44336",
-                cursor: isDeleting ? "default" : "pointer",
-              }}
-            >
-              {isDeleting ? "Deleting..." : "🗑️ Delete Conversation"}
-            </button>
+            )}
           </div>
         )}
       </div>
@@ -321,7 +849,315 @@ export default function InboxPage() {
           flexDirection: "column",
         }}
       >
-        <h2>Messages</h2>
+        <div style={{ marginBottom: "1rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+            <h2>Messages</h2>
+            {selectedTicket && (
+              <div style={{
+                fontSize: "0.8rem",
+                color: "#666",
+                backgroundColor: "#f8f9fa",
+                padding: "0.5rem 0.75rem",
+                borderRadius: "6px",
+                border: "1px solid #e9ecef"
+              }}>
+                <strong>Customer:</strong> {selectedTicket.customerId}
+                {selectedTicket.customerHistorySummary && (
+                  <div style={{ marginTop: "0.25rem", fontSize: "0.75rem", color: "#495057" }}>
+                    {selectedTicket.customerHistorySummary}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Customer History Section */}
+          {customerHistory.length > 0 && (
+            <div style={{
+              backgroundColor: "#f5f5f5",
+              borderRadius: "8px",
+              padding: "1rem",
+              marginBottom: "1rem",
+              border: "1px solid #e0e0e0",
+              maxHeight: "400px",
+              overflowY: "auto"
+            }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "0.5rem"
+              }}>
+                <h3 style={{
+                  margin: "0",
+                  fontSize: "0.9rem",
+                  color: "#666",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem"
+                }}>
+                  📚 Previous Conversations with {selectedTicket.customerId}
+                </h3>
+                <button
+                  onClick={() => setShowCumulativeHistory(!showCumulativeHistory)}
+                  style={{
+                    fontSize: "0.7rem",
+                    padding: "0.3rem 0.6rem",
+                    borderRadius: "4px",
+                    border: "1px solid #ccc",
+                    backgroundColor: showCumulativeHistory ? "#1976d2" : "white",
+                    color: showCumulativeHistory ? "white" : "#666",
+                    cursor: "pointer"
+                  }}
+                  title={showCumulativeHistory ? "Show individual ticket conversations" : "Show all conversations chronologically"}
+                >
+                  {showCumulativeHistory ? "📋 Individual View" : "📅 Chronological View"}
+                </button>
+              </div>
+
+              {showCumulativeHistory ? (
+                // Chronological View - All messages in order
+                <div style={{
+                  backgroundColor: "white",
+                  borderRadius: "6px",
+                  border: "1px solid #ddd",
+                  overflow: "hidden"
+                }}>
+                  <div style={{
+                    padding: "0.75rem",
+                    backgroundColor: "#f8f9fa",
+                    borderBottom: "1px solid #eee",
+                    fontSize: "0.8rem",
+                    color: "#666",
+                    fontWeight: "500"
+                  }}>
+                    📅 Complete Chronological History ({customerHistory.reduce((sum, ticket) => sum + ticket.messageCount, 0)} messages)
+                  </div>
+                  <div style={{
+                    maxHeight: "500px",
+                    overflowY: "auto"
+                  }}>
+                    {customerHistory
+                      .sort((a, b) => (a.updatedAt?.seconds || 0) - (b.updatedAt?.seconds || 0)) // Sort by date
+                      .map((historyTicket, ticketIndex) =>
+                        historicalMessages[historyTicket.id]?.map((msg, msgIndex) => (
+                          <div
+                            key={`${historyTicket.id}-${msg.id}`}
+                            style={{
+                              padding: "0.5rem 0.75rem",
+                              borderBottom: "1px solid #f5f5f5",
+                              fontSize: "0.8rem",
+                              backgroundColor: ticketIndex % 2 === 0 ? "#fafafa" : "white"
+                            }}
+                          >
+                            {msgIndex === 0 && (
+                              <div style={{
+                                fontSize: "0.7rem",
+                                color: "#999",
+                                marginBottom: "0.25rem",
+                                paddingBottom: "0.25rem",
+                                borderBottom: "1px solid #e0e0e0",
+                                fontWeight: "500"
+                              }}>
+                                📄 Ticket #{historyTicket.id.slice(-8)} ({historyTicket.status})
+                              </div>
+                            )}
+                            <div style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              marginBottom: "0.25rem"
+                            }}>
+                              <strong style={{
+                                color: msg.from === "System" ? "#ff9800" :
+                                       msg.role === "agent" ? "#1976d2" : "#666",
+                                fontSize: "0.75rem"
+                              }}>
+                                {msg.from}
+                              </strong>
+                              <span style={{
+                                fontSize: "0.7rem",
+                                color: "#999"
+                              }}>
+                                {msg.createdAt ? new Date(msg.createdAt.seconds * 1000).toLocaleString() : ""}
+                              </span>
+                            </div>
+                            <div style={{
+                              color: "#333",
+                              lineHeight: "1.4",
+                              wordWrap: "break-word"
+                            }}>
+                              {msg.body || JSON.stringify(msg.payload)}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                  </div>
+                </div>
+              ) : (
+                // Individual Ticket View
+                customerHistory.map((historyTicket) => {
+                  const isExpanded = expandedHistory.has(historyTicket.id);
+                  const ticketMessages = historicalMessages[historyTicket.id] || [];
+
+                  return (
+                    <div
+                      key={historyTicket.id}
+                      style={{
+                        backgroundColor: "white",
+                        borderRadius: "6px",
+                        marginBottom: "0.75rem",
+                        border: "1px solid #ddd",
+                        overflow: "hidden"
+                      }}
+                    >
+                      {/* Ticket Header */}
+                      <div
+                        style={{
+                          padding: "0.75rem",
+                          cursor: "pointer",
+                          borderBottom: isExpanded ? "1px solid #eee" : "none",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center"
+                        }}
+                        onClick={() => {
+                          setExpandedHistory(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(historyTicket.id)) {
+                              newSet.delete(historyTicket.id);
+                            } else {
+                              newSet.add(historyTicket.id);
+                            }
+                            return newSet;
+                          });
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: "0.25rem"
+                          }}>
+                            <span style={{
+                              fontSize: "0.8rem",
+                              color: "#666",
+                              fontWeight: "500"
+                            }}>
+                              Ticket #{historyTicket.id.slice(-8)} • {historyTicket.messageCount} messages
+                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <span style={{
+                                fontSize: "0.7rem",
+                                padding: "0.2rem 0.5rem",
+                                borderRadius: "10px",
+                                backgroundColor: historyTicket.status === "closed" ? "#4caf50" : "#ff9800",
+                                color: "white"
+                              }}>
+                                {historyTicket.status}
+                              </span>
+                              <span style={{
+                                fontSize: "0.8rem",
+                                transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                                transition: "transform 0.2s"
+                              }}>
+                                ▼
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{
+                            fontSize: "0.75rem",
+                            color: "#888"
+                          }}>
+                            {historyTicket.updatedAt ? new Date(historyTicket.updatedAt.seconds * 1000).toLocaleString() : ""}
+                            {historyTicket.assignedTo && (
+                              <span style={{ marginLeft: "0.5rem" }}>
+                                • Assigned to: {historyTicket.assignedTo}
+                              </span>
+                            )}
+                          </div>
+                          {!isExpanded && historyTicket.firstMessage && (
+                            <div style={{
+                              fontSize: "0.75rem",
+                              color: "#555",
+                              marginTop: "0.25rem",
+                              fontStyle: "italic"
+                            }}>
+                              "{historyTicket.firstMessage}"
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Expandable Messages */}
+                      {isExpanded && (
+                        <div style={{
+                          maxHeight: "300px",
+                          overflowY: "auto",
+                          backgroundColor: "#fafafa"
+                        }}>
+                          {ticketMessages.map((msg, index) => (
+                            <div
+                              key={msg.id}
+                              style={{
+                                padding: "0.5rem 0.75rem",
+                                borderBottom: index < ticketMessages.length - 1 ? "1px solid #f0f0f0" : "none",
+                                fontSize: "0.8rem"
+                              }}
+                            >
+                              <div style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem",
+                                marginBottom: "0.25rem"
+                              }}>
+                                <strong style={{
+                                  color: msg.from === "System" ? "#ff9800" :
+                                         msg.role === "agent" ? "#1976d2" : "#666",
+                                  fontSize: "0.75rem"
+                                }}>
+                                  {msg.from}
+                                </strong>
+                                <span style={{
+                                  fontSize: "0.7rem",
+                                  color: "#999"
+                                }}>
+                                  {msg.createdAt ? new Date(msg.createdAt.seconds * 1000).toLocaleString() : ""}
+                                </span>
+                              </div>
+                              <div style={{
+                                color: "#333",
+                                lineHeight: "1.4",
+                                wordWrap: "break-word"
+                              }}>
+                                {msg.body || JSON.stringify(msg.payload)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+
+              <div style={{
+                fontSize: "0.75rem",
+                color: "#888",
+                marginTop: "0.5rem",
+                textAlign: "center"
+              }}>
+                💡 Customer has {customerHistory.length} previous interaction{customerHistory.length !== 1 ? 's' : ''} •
+                {showCumulativeHistory
+                  ? " Showing complete chronological history"
+                  : " Click tickets to expand individual conversations • Toggle for chronological view"
+                }
+              </div>
+            </div>
+          )}
+        </div>
+
         <div
           style={{
             flex: 1,
@@ -330,33 +1166,57 @@ export default function InboxPage() {
             paddingRight: "0.5rem",
           }}
         >
-          {selectedConv ? (
-            messages.map((msg) => (
-              <div key={msg.id} style={{
-                marginBottom: "0.5rem",
-                padding: msg.error ? "0.75rem" : "0.25rem",
-                borderRadius: "4px",
-                backgroundColor: msg.error ? "#ffeaea" : "transparent",
-                border: msg.error ? "1px solid #f44336" : "none",
-                color: msg.error ? "#d32f2f" : "inherit"
-              }}>
-                <strong style={{ color: msg.from === "System" ? "#ff9800" : "inherit" }}>
-                  {msg.from}
-                </strong>:{" "}
-                {msg.body || JSON.stringify(msg.payload)}
-                {msg.errorCode && (
-                  <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", color: "#666" }}>
-                    Error Code: {msg.errorCode}
+          {selectedTicket ? (
+            <div>
+              {customerHistory.length > 0 && messages.length > 0 && (
+                <div style={{
+                  backgroundColor: "#e3f2fd",
+                  border: "1px solid #2196f3",
+                  borderRadius: "6px",
+                  padding: "0.75rem",
+                  marginBottom: "1rem",
+                  textAlign: "center",
+                  fontSize: "0.85rem",
+                  color: "#1976d2"
+                }}>
+                  <div style={{ fontWeight: "500", marginBottom: "0.25rem" }}>
+                    🔄 New Conversation Started
                   </div>
-                )}
-              </div>
-            ))
+                  <div style={{ fontSize: "0.8rem", color: "#666" }}>
+                    {new Date(selectedTicket.createdAt.seconds * 1000).toLocaleString()}
+                    {selectedTicket.customerId && (
+                      <span> • Previous conversations available above</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {messages.map((msg) => (
+                <div key={msg.id} style={{
+                  marginBottom: "0.5rem",
+                  padding: msg.error ? "0.75rem" : "0.25rem",
+                  borderRadius: "4px",
+                  backgroundColor: msg.error ? "#ffeaea" : "transparent",
+                  border: msg.error ? "1px solid #f44336" : "none",
+                  color: msg.error ? "#d32f2f" : "inherit"
+                }}>
+                  <strong style={{ color: msg.from === "System" ? "#ff9800" : "inherit" }}>
+                    {msg.from}
+                  </strong>:{" "}
+                  {msg.body || JSON.stringify(msg.payload)}
+                  {msg.errorCode && (
+                    <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", color: "#666" }}>
+                      Error Code: {msg.errorCode}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           ) : (
-            <p>Select a conversation</p>
+            <p>Select a ticket</p>
           )}
         </div>
 
-        {selectedConv && (
+        {selectedTicket && (
           <form
             onSubmit={handleSendAgentMessage}
             style={{

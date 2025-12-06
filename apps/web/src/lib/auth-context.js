@@ -3,62 +3,163 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, deleteDoc, query, where } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [company, setCompany] = useState(null);
+  const [respondents, setRespondents] = useState([]);
+  const [userCompanies, setUserCompanies] = useState([]); // Companies where user is admin
+  const [respondentCompanies, setRespondentCompanies] = useState([]); // Companies where user is respondent
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+  const [userRole, setUserRole] = useState(null); // 'admin' or 'respondent' for selected company
   const [loading, setLoading] = useState(true);
+  const [contextLoading, setContextLoading] = useState(false); // Loading user company context
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
+      try {
+        if (firebaseUser) {
+          console.log('Auth: User logged in, loading context...');
+          setUser(firebaseUser);
+          setContextLoading(true);
 
-        // Check if company exists, create if not
-        const companyRef = doc(db, 'companies', firebaseUser.uid);
-        const companySnap = await getDoc(companyRef);
-
-        if (companySnap.exists()) {
-          setCompany({ id: firebaseUser.uid, ...companySnap.data() });
+          // Load all companies and respondent relationships for this user
+          await loadUserContext(firebaseUser);
+          console.log('Auth: User context loaded successfully');
+          setContextLoading(false);
         } else {
-          // Create new company record
-          const newCompany = {
-            name: firebaseUser.displayName || 'New Company',
-            email: firebaseUser.email,
-            createdAt: new Date(),
-            twilioAccountSid: '',
-            twilioAuthToken: '',
-            twilioPhoneNumber: '',
-            geminiApiKey: '',
-            aiStartingMessage: 'Hello! I\'m your AI assistant. How can I help you today?',
-            aiPromptTemplate: `You are Axion AI, a friendly, helpful assistant for {companyName}.
-You are chatting 1:1 with a real user over WhatsApp.
-Always respond naturally, avoid generic replies like "Ok" or "Noted".
-Be proactive: acknowledge what they said, add a bit of helpful context, and ask a simple follow-up question if it makes sense.
-Keep replies short (1–3 sentences), friendly, and easy to read on a phone.
-
-Here is the recent conversation history (oldest to newest):
-{history}
-
-Continue the conversation with your next message.`,
-            webhookUrl: '', // Will be set when configuring webhook
-          };
-
-          await setDoc(companyRef, newCompany);
-          setCompany({ id: firebaseUser.uid, ...newCompany });
+          console.log('Auth: User logged out');
+          setUser(null);
+          setCompany(null);
+          setRespondents([]);
+          setUserCompanies([]);
+          setRespondentCompanies([]);
+          setSelectedCompanyId(null);
+          setUserRole(null);
+          setContextLoading(false);
         }
-      } else {
-        setUser(null);
-        setCompany(null);
+      } catch (error) {
+        console.error('Auth: Error during auth state change:', error);
+        // Ensure loading is set to false even on error
+        setUser(firebaseUser || null);
+      } finally {
+        console.log('Auth: Setting loading to false');
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
+
+  const loadUserContext = async (firebaseUser) => {
+    try {
+      console.log('Loading user context for:', firebaseUser.email);
+      const userId = firebaseUser.uid;
+      const userEmail = firebaseUser.email;
+
+      // Load companies where user is admin (owner)
+      console.log('Loading admin company...');
+      const adminCompanyRef = doc(db, 'companies', userId);
+      const adminCompanySnap = await getDoc(adminCompanyRef);
+
+      let adminCompanies = [];
+      if (adminCompanySnap.exists()) {
+        adminCompanies = [{ id: userId, ...adminCompanySnap.data(), userRole: 'admin' }];
+      }
+
+      // Load companies where user is a respondent
+      const respondentCompaniesPromises = adminCompanies.map(async (adminCompany) => {
+        const respondentsRef = collection(db, 'companies', adminCompany.id, 'respondents');
+        const respondentsSnap = await getDocs(respondentsRef);
+        return respondentsSnap.docs
+          .filter(doc => doc.data().email === userEmail && doc.data().status === 'active')
+          .map(doc => ({
+            id: adminCompany.id,
+            ...adminCompany,
+            respondentData: { id: doc.id, ...doc.data() },
+            userRole: 'respondent'
+          }));
+      });
+
+      const respondentCompaniesArrays = await Promise.all(respondentCompaniesPromises);
+      const respondentCompanies = respondentCompaniesArrays.flat();
+
+      // Also search for respondent relationships in other companies
+      const allCompaniesRef = collection(db, 'companies');
+      const allCompaniesSnap = await getDocs(allCompaniesRef);
+
+      const otherRespondentCompanies = [];
+      for (const companyDoc of allCompaniesSnap.docs) {
+        if (companyDoc.id !== userId) { // Skip user's own company
+          const respondentsRef = collection(db, 'companies', companyDoc.id, 'respondents');
+          const respondentsSnap = await getDocs(respondentsRef);
+
+          const userAsRespondent = respondentsSnap.docs.find(doc =>
+            doc.data().email === userEmail && doc.data().status === 'active'
+          );
+
+          if (userAsRespondent) {
+            otherRespondentCompanies.push({
+              id: companyDoc.id,
+              ...companyDoc.data(),
+              respondentData: { id: userAsRespondent.id, ...userAsRespondent.data() },
+              userRole: 'respondent'
+            });
+          }
+        }
+      }
+
+      const allUserCompanies = [...adminCompanies, ...respondentCompanies, ...otherRespondentCompanies];
+
+      setUserCompanies(allUserCompanies.filter(c => c.userRole === 'admin'));
+      setRespondentCompanies(allUserCompanies.filter(c => c.userRole === 'respondent'));
+
+      console.log('User companies loaded:', {
+        admin: allUserCompanies.filter(c => c.userRole === 'admin').length,
+        respondent: allUserCompanies.filter(c => c.userRole === 'respondent').length
+      });
+
+      // If only one company, auto-select it
+      if (allUserCompanies.length === 1) {
+        console.log('Auto-selecting single company...');
+        const selectedCompany = allUserCompanies[0];
+        try {
+          await selectCompanyContext(selectedCompany.id, selectedCompany.userRole);
+          console.log('Company auto-selected successfully');
+        } catch (error) {
+          console.error('Failed to auto-select company:', error);
+          // Continue loading even if auto-selection fails
+        }
+      } else if (allUserCompanies.length > 1) {
+        console.log('Multiple companies found, user will choose');
+      } else {
+        console.log('No companies found for user');
+      }
+    } catch (error) {
+      console.error('Error loading user context:', error);
+      // Don't re-throw - ensure auth loading completes
+      setUserCompanies([]);
+      setRespondentCompanies([]);
+    }
+  };
+
+  const loadRespondents = async (companyId) => {
+    try {
+      const respondentsRef = collection(db, 'companies', companyId, 'respondents');
+      const respondentsSnap = await getDocs(respondentsRef);
+      const respondentsData = respondentsSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setRespondents(respondentsData);
+    } catch (error) {
+      console.error('Error loading respondents:', error);
+      setRespondents([]);
+    }
+  };
 
   const signInWithGoogle = async () => {
     try {
@@ -117,14 +218,231 @@ Continue the conversation with your next message.`,
     }
   };
 
+  const inviteRespondent = async (email) => {
+    const isAdmin = company?.role === 'admin' || !company?.role; // Default to admin for existing users
+    if (!company || !isAdmin) {
+      throw new Error('Only admins can invite respondents');
+    }
+
+    // Validate Gmail email
+    if (!email.endsWith('@gmail.com')) {
+      throw new Error('Respondents must use Gmail addresses only');
+    }
+
+    try {
+      const respondentRef = doc(db, 'companies', company.id, 'respondents', email);
+      const invitationToken = Math.random().toString(36).substring(2, 15);
+
+      const respondentData = {
+        email,
+        status: 'invited',
+        invitedAt: new Date(),
+        invitationToken,
+        role: 'respondent',
+        name: '',
+        displayName: '',
+        createdAt: new Date(),
+      };
+
+      await setDoc(respondentRef, respondentData);
+      setRespondents(prev => [...prev, { id: email, ...respondentData }]);
+
+      // Generate invitation URL
+      const invitationUrl = `${window.location.origin}/invite?companyId=${company.id}&token=${invitationToken}`;
+
+      console.log(`Invitation created for ${email} with token ${invitationToken}`);
+      console.log(`Invitation URL: ${invitationUrl}`);
+
+      return {
+        ...respondentData,
+        invitationUrl,
+        invitationToken
+      };
+    } catch (error) {
+      console.error('Error inviting respondent:', error);
+      throw error;
+    }
+  };
+
+  const removeRespondent = async (respondentId) => {
+    const isAdmin = company?.role === 'admin' || !company?.role; // Default to admin for existing users
+    if (!company || !isAdmin) {
+      throw new Error('Only admins can remove respondents');
+    }
+
+    try {
+      const respondentRef = doc(db, 'companies', company.id, 'respondents', respondentId);
+      await deleteDoc(respondentRef);
+      setRespondents(prev => prev.filter(r => r.id !== respondentId));
+    } catch (error) {
+      console.error('Error removing respondent:', error);
+      throw error;
+    }
+  };
+
+  const acceptInvitation = async (companyId, token) => {
+    try {
+      // Find the respondent by token
+      const respondentsRef = collection(db, 'companies', companyId, 'respondents');
+      const q = query(respondentsRef, where('invitationToken', '==', token));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        throw new Error('Invalid invitation token');
+      }
+
+      const respondentDoc = snapshot.docs[0];
+      const respondentData = respondentDoc.data();
+
+      // Update respondent status and link to current user
+      await updateDoc(respondentDoc.ref, {
+        status: 'active',
+        acceptedAt: new Date(),
+        userId: user?.uid, // Link to the accepting user
+        name: user?.displayName || '',
+        displayName: user?.displayName || '',
+        isOnline: true, // Set as online when they accept invitation
+        lastSeen: new Date(),
+      });
+
+      return {
+        companyId,
+        respondent: { id: respondentDoc.id, ...respondentData, status: 'active' }
+      };
+    } catch (error) {
+      console.error('Error accepting invitation:', error);
+      throw error;
+    }
+  };
+
+  const selectCompanyContext = async (companyId, role) => {
+    try {
+      console.log('Selecting company context:', companyId, role);
+      setSelectedCompanyId(companyId);
+      setUserRole(role);
+
+      // Load the selected company data
+      const companyRef = doc(db, 'companies', companyId);
+      const companySnap = await getDoc(companyRef);
+
+      if (!companySnap.exists()) {
+        console.error('Company not found:', companyId);
+        throw new Error('Company not found');
+      }
+
+      const companyData = { id: companyId, ...companySnap.data() };
+      console.log('Loaded company data:', companyData);
+      setCompany(companyData);
+
+      // Load respondents if user is admin
+      if (role === 'admin') {
+        try {
+          await loadRespondents(companyId);
+        } catch (error) {
+          console.error('Error loading respondents:', error);
+          // Continue even if respondent loading fails
+        }
+      } else {
+        setRespondents([]);
+      }
+
+      // Store selection in localStorage for persistence
+      localStorage.setItem('selectedCompanyId', companyId);
+      localStorage.setItem('userRole', role);
+
+      return companyData;
+    } catch (error) {
+      console.error('Error selecting company context:', error);
+      // For auto-selection during loading, don't throw - just log
+      // This prevents loading from getting stuck
+      if (error.message === 'Company not found') {
+        console.error('Company not found during auto-selection, continuing...');
+        return null;
+      }
+      throw error;
+    }
+  };
+
+  const updateRespondentStatus = async (isOnline) => {
+    if (!company || userRole !== 'respondent') return;
+
+    try {
+      console.log(`🔄 [${new Date().toISOString()}] Updating respondent status: ${user.email} -> ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+
+      // Find the respondent document for current user
+      const respondentsRef = collection(db, 'companies', company.id, 'respondents');
+      const q = query(respondentsRef, where('email', '==', user.email));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        const respondentDoc = snapshot.docs[0];
+        await updateDoc(respondentDoc.ref, {
+          isOnline,
+          lastSeen: new Date(),
+        });
+        console.log(`✅ Respondent status updated successfully for ${user.email}`);
+      } else {
+        console.log(`❌ Respondent document not found for ${user.email}`);
+      }
+    } catch (error) {
+      console.error('❌ Error updating respondent status:', error);
+    }
+  };
+
+  const getInvitationDetails = async (companyId, token) => {
+    try {
+      const respondentsRef = collection(db, 'companies', companyId, 'respondents');
+      const q = query(respondentsRef, where('invitationToken', '==', token));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        throw new Error('Invalid invitation token');
+      }
+
+      const respondentDoc = snapshot.docs[0];
+      const respondentData = respondentDoc.data();
+
+      // Get company details
+      const companyRef = doc(db, 'companies', companyId);
+      const companySnap = await getDoc(companyRef);
+
+      if (!companySnap.exists()) {
+        throw new Error('Company not found');
+      }
+
+      const companyData = companySnap.data();
+
+      return {
+        company: { id: companyId, ...companyData },
+        respondent: { id: respondentDoc.id, ...respondentData },
+        isExpired: respondentData.status !== 'invited', // Already accepted or invalid
+      };
+    } catch (error) {
+      console.error('Error getting invitation details:', error);
+      throw error;
+    }
+  };
+
   const value = {
     user,
     company,
+    respondents,
+    userCompanies,
+    respondentCompanies,
+    selectedCompanyId,
+    userRole,
     loading,
+    contextLoading,
     signInWithGoogle,
     logout,
     updateCompanySettings,
     clearTwilioErrors,
+    inviteRespondent,
+    removeRespondent,
+    acceptInvitation,
+    getInvitationDetails,
+    selectCompanyContext,
+    updateRespondentStatus,
   };
 
   return (
@@ -140,6 +458,16 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+// Helper function to get user initials
+export function getUserInitials(name) {
+  if (!name) return '';
+  const parts = name.trim().split(' ');
+  if (parts.length === 1) {
+    return parts[0].substring(0, 2).toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 
