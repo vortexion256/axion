@@ -17,6 +17,9 @@ export default function SettingsPage() {
     aiStartingMessage: '',
     aiPromptTemplate: '',
     aiWaitMinutes: 5, // Default 5 minutes
+    showUserInitials: true, // Show user initials in messages
+    notifyAgentJoin: true, // Notify when human agent joins
+    notifyAiTakeover: true, // Notify when AI takes over
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -38,6 +41,9 @@ export default function SettingsPage() {
         aiStartingMessage: company.aiStartingMessage || '',
         aiPromptTemplate: company.aiPromptTemplate || '',
         aiWaitMinutes: company.aiWaitMinutes || 5,
+        showUserInitials: company.showUserInitials !== false, // Default true
+        notifyAgentJoin: company.notifyAgentJoin !== false, // Default true
+        notifyAiTakeover: company.notifyAiTakeover !== false, // Default true
       });
     }
   }, [company]);
@@ -354,6 +360,51 @@ export default function SettingsPage() {
                 </select>
                 <small style={{ color: '#666', display: 'block', marginTop: '0.5rem' }}>
                   How long AI should wait after a respondent goes offline before responding to customer messages.
+                </small>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.showUserInitials}
+                    onChange={(e) => handleInputChange('showUserInitials', e.target.checked)}
+                    style={{ width: '16px', height: '16px' }}
+                  />
+                  Show User Initials in Messages
+                </label>
+                <small style={{ color: '#666', display: 'block', marginTop: '0.25rem' }}>
+                  Display user initials (e.g., "JD") at the end of messages to identify senders.
+                </small>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.notifyAgentJoin}
+                    onChange={(e) => handleInputChange('notifyAgentJoin', e.target.checked)}
+                    style={{ width: '16px', height: '16px' }}
+                  />
+                  Notify When Human Agent Joins
+                </label>
+                <small style={{ color: '#666', display: 'block', marginTop: '0.25rem' }}>
+                  Send system messages and WhatsApp notifications when a human agent joins the conversation.
+                </small>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.notifyAiTakeover}
+                    onChange={(e) => handleInputChange('notifyAiTakeover', e.target.checked)}
+                    style={{ width: '16px', height: '16px' }}
+                  />
+                  Notify When AI Takes Over
+                </label>
+                <small style={{ color: '#666', display: 'block', marginTop: '0.25rem' }}>
+                  Send system messages and WhatsApp notifications when AI takes over after human agent goes offline.
                 </small>
               </div>
             </div>

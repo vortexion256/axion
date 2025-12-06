@@ -465,7 +465,9 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      return res.sendStatus(200);
+      // Return empty TwiML response to prevent any automatic messages
+      res.set('Content-Type', 'text/xml');
+      return res.send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
     }
 
     // AI will respond - add a system message if this is the first AI response after human agent was active
@@ -480,7 +482,7 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
       (msg.createdAt.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt)) > new Date(Date.now() - waitMinutes * 60 * 1000)
     );
 
-    if (hasRecentHumanResponse) {
+    if (hasRecentHumanResponse && company.notifyAiTakeover !== false) {
       // Add system message that AI is taking over
       const aiTakeoverMsgRef = ticketRef.collection('messages').doc(`system-ai-takeover-${Date.now()}`);
       await aiTakeoverMsgRef.set({
@@ -494,7 +496,7 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
 
       // Send WhatsApp notification to customer about AI takeover
       try {
-        if (company.twilioAccountSid && company.twilioAuthToken && company.twilioPhoneNumber) {
+        if (company.notifyAiTakeover !== false && company.twilioAccountSid && company.twilioAuthToken && company.twilioPhoneNumber) {
           const twilioClient = twilio(company.twilioAccountSid, company.twilioAuthToken);
           const takeoverMessage = `🤖 Hi! Our human agent has stepped away temporarily. Our AI assistant will continue helping you with automated responses until the agent returns.`;
 
@@ -610,7 +612,8 @@ Continue the conversation with your next message.`;
 
     // 6️⃣ Add AI reply as the next message (store in Firestore)
     const aiInitials = getUserInitials("Axion AI");
-    const attributedAiReply = `${aiReplyText}\n\n<${aiInitials}>`;
+    const showInitials = company.showUserInitials !== false; // Default true
+    const attributedAiReply = showInitials ? `${aiReplyText}\n\n<${aiInitials}>` : aiReplyText;
 
     const aiMsgId = `ai-${Date.now()}`;
     const aiMsgRef = ticketRef.collection("messages").doc(aiMsgId);
@@ -783,7 +786,8 @@ app.post("/agent/send-message", async (req, res) => {
     // 1️⃣ Store agent message in Firestore with attribution
     const agentName = userName || "Agent";
     const agentInitials = getUserInitials(agentName);
-    const attributedBody = `${body}\n\n<${agentInitials}>`;
+    const showInitials = company.showUserInitials !== false; // Default true
+    const attributedBody = showInitials ? `${body}\n\n<${agentInitials}>` : body;
 
     const agentMsgId = `agent-${Date.now()}`;
     const agentMsgRef = ticketRef.collection("messages").doc(agentMsgId);

@@ -438,14 +438,16 @@ export function AuthProvider({ children }) {
           updatedAt: new Date(),
         });
 
-        // Add a system message notifying about agent joining
-        const systemMsgRef = ticketDoc.ref.collection('messages').doc(`system-agent-joined-${Date.now()}`);
-        await systemMsgRef.set({
-          from: "System",
-          role: "system",
-          body: `👋 Agent ${user.displayName || user.email.split('@')[0]} has joined the conversation. AI assistant is now offline.`,
-          createdAt: new Date(),
-        });
+        // Add a system message notifying about agent joining (if enabled)
+        if (company.notifyAgentJoin !== false) {
+          const systemMsgRef = ticketDoc.ref.collection('messages').doc(`system-agent-joined-${Date.now()}`);
+          await systemMsgRef.set({
+            from: "System",
+            role: "system",
+            body: `👋 Agent ${user.displayName || user.email.split('@')[0]} has joined the conversation. AI assistant is now offline.`,
+            createdAt: new Date(),
+          });
+        }
 
         // Note: WhatsApp notifications will be sent by the backend when customer messages come in
         // This prevents sending duplicate notifications and ensures proper webhook flow
