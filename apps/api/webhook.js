@@ -121,22 +121,37 @@ async function assignTicketToRespondent(ticketRef, tenantId, company) {
           console.error('Failed to update last assigned recent index:', updateError);
         }
       } else if (respondents.length > 0) {
-        // Priority 2: Round-robin assignment among any available respondents
-        const lastAssignedIndex = company.lastAssignedAnyIndex || 0;
-        const nextIndex = lastAssignedIndex % respondents.length;
-        assignedRespondent = respondents[nextIndex];
+        // Check if admin is online - if so, assign to admin instead of offline respondents
+        const companyRef = db.collection('companies').doc(tenantId);
+        const companySnap = await companyRef.get();
+        const companyData = companySnap.data() || {};
+        const adminOnline = companyData.adminOnline === true;
 
-        console.log(`⚖️ Round-robin: ${nextIndex + 1}/${respondents.length} available respondents`);
-        console.log(`⚖️ Assigned to available respondent: ${assignedRespondent.name || assignedRespondent.email} (${assignedRespondent.email})`);
+        if (adminOnline) {
+          console.log(`👨‍💼 Admin is online, assigning to admin instead of offline respondents`);
+          assignedTo = 'Admin';
+          assignedEmail = null;
+          console.log(`👨‍💼 Assigned conversation to Admin (all respondents offline)`);
+        } else {
+          // Priority 2: Round-robin assignment among offline respondents
+          const lastAssignedIndex = company.lastAssignedAnyIndex || 0;
+          const nextIndex = lastAssignedIndex % respondents.length;
+          assignedRespondent = respondents[nextIndex];
 
-        // Update the round-robin index on the company
-        try {
-          const companyRef = db.collection('companies').doc(tenantId);
-          await companyRef.update({
-            lastAssignedAnyIndex: nextIndex + 1,
-          });
-        } catch (updateError) {
-          console.error('Failed to update last assigned any index:', updateError);
+          console.log(`⚖️ Round-robin: ${nextIndex + 1}/${respondents.length} available respondents`);
+          console.log(`⚖️ Assigned to offline respondent: ${assignedRespondent.name || assignedRespondent.email} (${assignedRespondent.email})`);
+
+          // Update the round-robin index on the company
+          try {
+            await companyRef.update({
+              lastAssignedAnyIndex: nextIndex + 1,
+            });
+          } catch (updateError) {
+            console.error('Failed to update last assigned any index:', updateError);
+          }
+
+          assignedTo = assignedRespondent.name || assignedRespondent.email.split('@')[0];
+          assignedEmail = assignedRespondent.email;
         }
       }
 
@@ -169,6 +184,7 @@ async function assignTicketToRespondent(ticketRef, tenantId, company) {
       assignedEmail,
       assignedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      aiEnabled: assignedTo === 'Admin', // Enable AI when assigned to admin
     });
 
     console.log(`👤 Assigned conversation to: ${assignedTo}`);
@@ -328,7 +344,9 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         channel: "whatsapp",
-        aiEnabled: true, // AI is enabled by default for new tickets
+        aiEnabled: assignedTo === 'Admin', // AI enabled only when assigned to admin
+        assignedTo: assignedTo,
+        assignedEmail: assignedEmail,
         customerHistorySummary: customerHistorySummary || null,
       };
 

@@ -332,6 +332,18 @@ export function AuthProvider({ children }) {
 
       const companyData = { id: companyId, ...companySnap.data() };
       console.log('Loaded company data:', companyData);
+
+      // If user is admin, set them as online
+      if (role === 'admin' && user) {
+        console.log('Setting admin as online...');
+        await updateDoc(companyRef, {
+          adminOnline: true,
+          adminLastSeen: new Date(),
+        });
+        companyData.adminOnline = true;
+        companyData.adminLastSeen = new Date();
+      }
+
       setCompany(companyData);
 
       // Load respondents if user is admin
@@ -389,6 +401,28 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const updateAdminStatus = async (isOnline) => {
+    if (!company || userRole !== 'admin') return;
+
+    try {
+      console.log(`🔄 [${new Date().toISOString()}] Updating admin status: ${user.email} -> ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+
+      // Update admin online status in company document
+      const companyRef = doc(db, 'companies', company.id);
+      await updateDoc(companyRef, {
+        adminOnline: isOnline,
+        adminLastSeen: new Date(),
+      });
+
+      // Update local company state
+      setCompany(prev => prev ? { ...prev, adminOnline: isOnline, adminLastSeen: new Date() } : null);
+
+      console.log(`✅ Admin status updated successfully for ${user.email}`);
+    } catch (error) {
+      console.error('❌ Error updating admin status:', error);
+    }
+  };
+
   const getInvitationDetails = async (companyId, token) => {
     try {
       const respondentsRef = collection(db, 'companies', companyId, 'respondents');
@@ -443,6 +477,7 @@ export function AuthProvider({ children }) {
     getInvitationDetails,
     selectCompanyContext,
     updateRespondentStatus,
+    updateAdminStatus,
   };
 
   return (

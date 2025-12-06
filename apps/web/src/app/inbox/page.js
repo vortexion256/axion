@@ -634,6 +634,39 @@ export default function InboxPage() {
                 </div>
               </div>
             )}
+            {isAdmin && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "0.8rem", color: "#666" }}>Admin Status:</span>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button
+                    onClick={() => {
+                      const newStatus = !company?.adminOnline;
+                      updateAdminStatus(newStatus);
+                    }}
+                    style={{
+                      backgroundColor: company?.adminOnline ? "#4caf50" : "#f44336",
+                      color: "white",
+                      border: "none",
+                      padding: "0.25rem 0.75rem",
+                      borderRadius: "15px",
+                      fontSize: "0.7rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      transition: "all 0.2s"
+                    }}
+                    title={company?.adminOnline ? "Click to go offline - tickets will be assigned to offline respondents" : "Click to go online - tickets will be assigned to you when respondents are offline"}
+                  >
+                    <span style={{ fontSize: "0.6rem" }}>{company?.adminOnline ? "●" : "○"}</span>
+                    {company?.adminOnline ? "Online" : "Offline"}
+                  </button>
+                  <span style={{ fontSize: "0.7rem", color: "#666" }}>
+                    {company?.adminOnline ? "🤖 Auto AI enabled" : "Respondents handle tickets"}
+                  </span>
+                </div>
+              </div>
+            )}
             {'Notification' in window && Notification.permission === 'default' && (
               <button
                 onClick={() => Notification.requestPermission()}
@@ -757,7 +790,7 @@ export default function InboxPage() {
               borderTop: "1px solid #eee",
             }}
           >
-            {isAdmin && (
+            {(isAdmin || (isRespondent && selectedTicket.assignedEmail === user?.email)) && (
               <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexDirection: "column" }}>
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                   <div style={{ fontSize: "0.85rem" }}>
@@ -769,11 +802,20 @@ export default function InboxPage() {
                       try {
                         const newStatus = e.target.value;
                         const ticketRef = doc(db, "companies", tenantId, "tickets", selectedTicket.id);
-                        await updateDoc(ticketRef, {
+                        const updateData = {
                           status: newStatus,
                           updatedAt: new Date()
-                        });
-                        setSelectedTicket({ ...selectedTicket, status: newStatus });
+                        };
+
+                        // If closing ticket, add who closed it
+                        if (newStatus === "closed") {
+                          updateData.closedBy = user?.email;
+                          updateData.closedByName = user?.displayName || user?.email?.split('@')[0] || 'Unknown';
+                          updateData.closedAt = new Date();
+                        }
+
+                        await updateDoc(ticketRef, updateData);
+                        setSelectedTicket({ ...selectedTicket, ...updateData });
                       } catch (error) {
                         console.error("Error updating ticket status:", error);
                         alert("Failed to update ticket status");
@@ -790,6 +832,11 @@ export default function InboxPage() {
                     <option value="pending">Pending</option>
                     <option value="closed">Closed</option>
                   </select>
+                  {selectedTicket.status === "closed" && selectedTicket.closedBy && (
+                    <span style={{ fontSize: "0.7rem", color: "#666" }}>
+                      Closed by {selectedTicket.closedByName || selectedTicket.closedBy}
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
@@ -960,6 +1007,11 @@ export default function InboxPage() {
                                 fontWeight: "500"
                               }}>
                                 📄 Ticket #{historyTicket.id.slice(-8)} ({historyTicket.status})
+                                {historyTicket.status === "closed" && historyTicket.closedByName && (
+                                  <span style={{ marginLeft: "0.5rem", color: "#4caf50" }}>
+                                    ✅ Closed by {historyTicket.closedByName}
+                                  </span>
+                                )}
                               </div>
                             )}
                             <div style={{
@@ -1075,6 +1127,11 @@ export default function InboxPage() {
                               <span style={{ marginLeft: "0.5rem" }}>
                                 • Assigned to: {historyTicket.assignedTo}
                               </span>
+                            )}
+                            {historyTicket.status === "closed" && historyTicket.closedByName && (
+                              <div style={{ marginTop: "0.25rem", fontSize: "0.7rem", color: "#666" }}>
+                                ✅ Closed by {historyTicket.closedByName}
+                              </div>
                             )}
                           </div>
                           {!isExpanded && historyTicket.firstMessage && (
