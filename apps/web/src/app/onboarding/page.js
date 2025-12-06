@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth-context';
 import { doc, setDoc } from 'firebase/firestore';
@@ -14,6 +14,12 @@ export default function OnboardingPage() {
   const [companyName, setCompanyName] = useState('');
   const [useCase, setUseCase] = useState('');
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      router.push('/login');
+    }
+  }, [user, router]);
 
   const handleCreateCompany = async () => {
     const trimmedName = companyName.trim();
@@ -79,8 +85,7 @@ Continue the conversation with your next message.`,
   };
 
   if (!user) {
-    router.push('/login');
-    return null;
+    return null; // useEffect will handle navigation
   }
 
   return (

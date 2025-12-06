@@ -18,7 +18,7 @@ import {
 } from "firebase/firestore";
 
 export default function InboxPage() {
-  const { user, company, loading, userRole, userCompanies, respondentCompanies, selectedCompanyId, selectCompanyContext, updateRespondentStatus } = useAuth();
+  const { user, company, loading, userRole, userCompanies, respondentCompanies, selectedCompanyId, selectCompanyContext, updateRespondentStatus, updateAdminStatus } = useAuth();
   const isAdmin = userRole === 'admin';
   const isRespondent = userRole === 'respondent';
   const router = useRouter();
@@ -73,8 +73,10 @@ export default function InboxPage() {
   useEffect(() => {
     if (isRespondent && !loading && user?.email) {
       console.log(`🟢 [${new Date().toISOString()}] Setting respondent ${user.email} as online initially`);
+      // Track if they were previously offline to know when they come online
+      const wasOffline = !isOnline;
       // Don't await - fire and forget to prevent blocking
-      updateRespondentStatus(true).catch(error => {
+      updateRespondentStatus(true, wasOffline).catch(error => {
         console.error('Failed to set initial online status:', error);
       });
       setIsOnline(true);
@@ -82,7 +84,7 @@ export default function InboxPage() {
       // Set up periodic online status updates every 1.5 minutes (90 seconds)
       const interval = setInterval(() => {
         if (isOnline) {
-          updateRespondentStatus(true).catch(error => {
+          updateRespondentStatus(true, false).catch(error => {
             console.error('Failed to update periodic online status:', error);
           });
         }
@@ -380,7 +382,7 @@ export default function InboxPage() {
   }, [selectedTicket, tenantId]);
 
   const apiBase =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "https://ellen-nonabridgable-samual.ngrok-free.dev";
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
   console.log("API Base URL:", apiBase);
   console.log("NEXT_PUBLIC_API_BASE_URL:", process.env.NEXT_PUBLIC_API_BASE_URL);
@@ -389,7 +391,7 @@ export default function InboxPage() {
     if (!selectedTicket) return;
     try {
       setIsTogglingAI(true);
-      const current = selectedTicket.aiEnabled !== false; // missing => true
+                  const current = selectedTicket?.aiEnabled !== false; // missing => true
       const enable = !current;
 
       const resp = await fetch(`${apiBase}/agent/toggle-ai`, {
@@ -593,7 +595,12 @@ export default function InboxPage() {
                 <span style={{ fontSize: "0.8rem", color: "#666" }}>Status:</span>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button
-                    onClick={() => setIsOnline(!isOnline)}
+                    onClick={() => {
+                      const newOnlineStatus = !isOnline;
+                      const wasPreviouslyOffline = !isOnline && newOnlineStatus; // Coming online from offline
+                      setIsOnline(newOnlineStatus);
+                      updateRespondentStatus(newOnlineStatus, wasPreviouslyOffline);
+                    }}
                     style={{
                       backgroundColor: isOnline ? "#4caf50" : "#f44336",
                       color: "white",
@@ -615,7 +622,8 @@ export default function InboxPage() {
                   <button
                     onClick={() => {
                       console.log('Manually setting online...');
-                      updateRespondentStatus(true);
+                      const wasPreviouslyOffline = !isOnline;
+                      updateRespondentStatus(true, wasPreviouslyOffline);
                       setIsOnline(true);
                     }}
                     style={{
@@ -790,14 +798,14 @@ export default function InboxPage() {
               borderTop: "1px solid #eee",
             }}
           >
-            {(isAdmin || (isRespondent && selectedTicket.assignedEmail === user?.email)) && (
+            {selectedTicket && (isAdmin || (isRespondent && selectedTicket.assignedEmail === user?.email)) && (
               <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexDirection: "column" }}>
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                   <div style={{ fontSize: "0.85rem" }}>
                     <strong>Status:</strong>
                   </div>
                   <select
-                    value={selectedTicket.status || "open"}
+                    value={selectedTicket?.status || "open"}
                     onChange={async (e) => {
                       try {
                         const newStatus = e.target.value;
@@ -832,7 +840,7 @@ export default function InboxPage() {
                     <option value="pending">Pending</option>
                     <option value="closed">Closed</option>
                   </select>
-                  {selectedTicket.status === "closed" && selectedTicket.closedBy && (
+                  {selectedTicket?.status === "closed" && selectedTicket?.closedBy && (
                     <span style={{ fontSize: "0.7rem", color: "#666" }}>
                       Closed by {selectedTicket.closedByName || selectedTicket.closedBy}
                     </span>
@@ -842,7 +850,7 @@ export default function InboxPage() {
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                   <div style={{ fontSize: "0.85rem" }}>
                     <strong>AI status:</strong>{" "}
-                    {selectedTicket.aiEnabled === false ? "Off" : "On"}
+                    {selectedTicket?.aiEnabled === false ? "Off" : "On"}
                   </div>
                   <button
                     onClick={handleToggleAI}
@@ -852,16 +860,16 @@ export default function InboxPage() {
                       fontSize: "0.75rem",
                       borderRadius: "3px",
                       border: "1px solid #ccc",
-                      backgroundColor:
-                        selectedTicket.aiEnabled === false ? "#e0f7fa" : "#ffe0e0",
+                    backgroundColor:
+                      selectedTicket?.aiEnabled === false ? "#e0f7fa" : "#ffe0e0",
                       cursor: isTogglingAI ? "default" : "pointer",
                     }}
                   >
                     {isTogglingAI
                       ? "Updating..."
-                      : selectedTicket.aiEnabled === false
-                      ? "Turn AI On"
-                      : "Turn AI Off"}
+                    : selectedTicket?.aiEnabled === false
+                    ? "Turn AI On"
+                    : "Turn AI Off"}
                   </button>
                 </div>
               </div>
@@ -908,8 +916,8 @@ export default function InboxPage() {
                 borderRadius: "6px",
                 border: "1px solid #e9ecef"
               }}>
-                <strong>Customer:</strong> {selectedTicket.customerId}
-                {selectedTicket.customerHistorySummary && (
+                <strong>Customer:</strong> {selectedTicket?.customerId || 'Unknown'}
+                {selectedTicket?.customerHistorySummary && (
                   <div style={{ marginTop: "0.25rem", fontSize: "0.75rem", color: "#495057" }}>
                     {selectedTicket.customerHistorySummary}
                   </div>
@@ -943,7 +951,7 @@ export default function InboxPage() {
                   alignItems: "center",
                   gap: "0.5rem"
                 }}>
-                  📚 Previous Conversations with {selectedTicket.customerId}
+                  📚 Previous Conversations with {selectedTicket?.customerId || 'Unknown'}
                 </h3>
                 <button
                   onClick={() => setShowCumulativeHistory(!showCumulativeHistory)}
@@ -1240,8 +1248,8 @@ export default function InboxPage() {
                     🔄 New Conversation Started
                   </div>
                   <div style={{ fontSize: "0.8rem", color: "#666" }}>
-                    {new Date(selectedTicket.createdAt.seconds * 1000).toLocaleString()}
-                    {selectedTicket.customerId && (
+                    {selectedTicket?.createdAt ? new Date(selectedTicket.createdAt.seconds * 1000).toLocaleString() : ''}
+                    {selectedTicket?.customerId && (
                       <span> • Previous conversations available above</span>
                     )}
                   </div>

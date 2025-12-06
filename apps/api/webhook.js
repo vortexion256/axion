@@ -41,6 +41,13 @@ function getUserInitials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+// Helper function to check if a respondent is online
+function isRespondentOnline(email, respondents) {
+  if (!respondents || !Array.isArray(respondents)) return false;
+  const respondent = respondents.find(r => r.email === email);
+  return respondent ? respondent.isOnline === true : false;
+}
+
 // Helper function to assign ticket to available respondent or admin
 async function assignTicketToRespondent(ticketRef, tenantId, company) {
   try {
@@ -133,13 +140,14 @@ async function assignTicketToRespondent(ticketRef, tenantId, company) {
           assignedEmail = null;
           console.log(`👨‍💼 Assigned conversation to Admin (all respondents offline)`);
         } else {
-          // Priority 2: Round-robin assignment among offline respondents
+          // Priority 2: Round-robin assignment among offline respondents (with AI enabled)
           const lastAssignedIndex = company.lastAssignedAnyIndex || 0;
           const nextIndex = lastAssignedIndex % respondents.length;
           assignedRespondent = respondents[nextIndex];
 
           console.log(`⚖️ Round-robin: ${nextIndex + 1}/${respondents.length} available respondents`);
           console.log(`⚖️ Assigned to offline respondent: ${assignedRespondent.name || assignedRespondent.email} (${assignedRespondent.email})`);
+          console.log(`🤖 AI will be enabled for offline respondent assignment`);
 
           // Update the round-robin index on the company
           try {
@@ -188,16 +196,22 @@ async function assignTicketToRespondent(ticketRef, tenantId, company) {
     });
 
     console.log(`👤 Assigned conversation to: ${assignedTo}`);
-    return { assignedTo, assignedEmail };
+
+    // Determine if assigned to offline respondent (for AI enablement)
+    // We know it was assigned to offline respondent if we reached this point and assignedTo is not 'Admin'
+    const assignedToOfflineRespondent = assignedTo !== 'Admin' && assignedEmail;
+
+    return { assignedTo, assignedEmail, assignedToOfflineRespondent };
   } catch (error) {
-    console.error('Error assigning conversation:', error);
+    console.error('Error assigning ticket:', error);
     // Fallback: assign to admin
-    await convRef.update({
+    await ticketRef.update({
       assignedTo: 'Admin',
       assignedAt: admin.firestore.FieldValue.serverTimestamp(),
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      aiEnabled: true, // Enable AI toggle for fallback admin assignment
     });
-    return { assignedTo: 'Admin', assignedEmail: null };
+    return { assignedTo: 'Admin', assignedEmail: null, assignedToOfflineRespondent: false };
   }
 }
 
@@ -337,6 +351,7 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
         }
       }
 
+      // Create initial ticket data (will be updated after assignment)
       const initialTicketData = {
         customerId: from,
         status: "open",
@@ -344,18 +359,25 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         channel: "whatsapp",
-        aiEnabled: assignedTo === 'Admin', // AI enabled only when assigned to admin
-        assignedTo: assignedTo,
-        assignedEmail: assignedEmail,
         customerHistorySummary: customerHistorySummary || null,
       };
 
       await ticketRef.set(initialTicketData);
 
       // Assign ticket to available respondent or admin
-      await assignTicketToRespondent(ticketRef, tenantId, company);
+      const assignmentResult = await assignTicketToRespondent(ticketRef, tenantId, company);
 
-      ticketDocData = initialTicketData;
+      // Update ticket with assignment information
+      // AI is always enabled initially for toggle functionality, but real-time status determines responses
+      const finalTicketData = {
+        ...initialTicketData,
+        aiEnabled: true, // Always enable AI toggle, but check real-time status for responses
+        assignedTo: assignmentResult.assignedTo,
+        assignedEmail: assignmentResult.assignedEmail,
+      };
+
+      await ticketRef.update(finalTicketData);
+      ticketDocData = finalTicketData;
 
       // Add a system message about customer history if they have previous interactions
       if (customerHistorySummary) {
@@ -385,10 +407,57 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // If AI is disabled for this ticket, only store the user message and update updatedAt
-    if (!aiEnabled) {
+    // Check if assigned respondent is currently online or recently active - control AI accordingly
+    let aiShouldRespond = aiEnabled;
+    console.log(`🎫 Ticket ${ticketId} assignment: ${ticketDocData.assignedTo} (${ticketDocData.assignedEmail})`);
+    console.log(`🤖 AI enabled in ticket: ${aiEnabled}`);
+
+    if (ticketDocData.assignedEmail && ticketDocData.assignedTo !== 'Admin') {
+      // Check if the assigned respondent is currently online
+      const respondentsRef = db.collection('companies').doc(tenantId).collection('respondents');
+      const respondentQuery = await respondentsRef.where('email', '==', ticketDocData.assignedEmail).get();
+
+      console.log(`🔍 Checking respondent ${ticketDocData.assignedEmail} status...`);
+
+      if (!respondentQuery.empty) {
+        const respondentData = respondentQuery.docs[0].data();
+        const isCurrentlyOnline = respondentData.isOnline === true;
+
+        // Check if respondent was active within configured wait time
+        const waitMinutes = company.aiWaitMinutes || 5; // Default to 5 minutes if not set
+        let wasRecentlyActive = false;
+        if (respondentData.lastSeen) {
+          const lastSeen = respondentData.lastSeen.toDate ? respondentData.lastSeen.toDate() : new Date(respondentData.lastSeen);
+          const waitTimeAgo = new Date(Date.now() - waitMinutes * 60 * 1000);
+          wasRecentlyActive = lastSeen > waitTimeAgo;
+          console.log(`📅 Last seen: ${lastSeen.toISOString()}, ${waitMinutes}min ago: ${waitTimeAgo.toISOString()}`);
+        }
+
+        // AI responds if respondent is offline AND hasn't been active in last 5 minutes
+        aiShouldRespond = !isCurrentlyOnline && !wasRecentlyActive;
+
+        console.log(`👤 Assigned respondent ${ticketDocData.assignedTo}:`);
+        console.log(`   - Currently online: ${isCurrentlyOnline}`);
+        console.log(`   - Recently active (${waitMinutes}min): ${wasRecentlyActive}`);
+        console.log(`   - Respondent data:`, {
+          isOnline: respondentData.isOnline,
+          lastSeen: respondentData.lastSeen,
+          email: respondentData.email
+        });
+        console.log(`🤖 AI ${aiShouldRespond ? 'will respond' : 'will NOT respond'}`);
+      } else {
+        console.log(`❌ Respondent ${ticketDocData.assignedEmail} not found in database!`);
+        aiShouldRespond = true; // Fallback to AI if respondent not found
+      }
+    } else {
+      console.log(`👨‍💼 Ticket assigned to Admin or no email - AI will respond`);
+      aiShouldRespond = true; // Admin tickets always get AI
+    }
+
+    // If AI should not respond (assigned respondent is online), only store the user message
+    if (!aiShouldRespond) {
       console.log(
-        `🤖 AI is disabled for ticket ${ticketId}; only storing incoming message.`
+        `🤖 AI disabled - assigned respondent is online or recently active for ticket ${ticketId}; only storing incoming message.`
       );
 
       await ticketRef.update({
@@ -397,6 +466,54 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
       });
 
       return res.sendStatus(200);
+    }
+
+    // AI will respond - add a system message if this is the first AI response after human agent was active
+    const previousMessages = await ticketRef.collection('messages')
+      .orderBy('createdAt', 'desc')
+      .limit(10)
+      .get();
+
+    const recentMessages = previousMessages.docs.map(doc => doc.data());
+    const hasRecentHumanResponse = recentMessages.some(msg =>
+      msg.role === 'agent' && msg.createdAt &&
+      (msg.createdAt.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt)) > new Date(Date.now() - waitMinutes * 60 * 1000)
+    );
+
+    if (hasRecentHumanResponse) {
+      // Add system message that AI is taking over
+      const aiTakeoverMsgRef = ticketRef.collection('messages').doc(`system-ai-takeover-${Date.now()}`);
+      await aiTakeoverMsgRef.set({
+        from: "System",
+        role: "system",
+        body: `🤖 Our AI assistant is now handling responses while the human agent is away. You'll receive automated replies until the agent returns.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      console.log(`🤖 Added AI takeover notification for ticket ${ticketId}`);
+
+      // Send WhatsApp notification to customer about AI takeover
+      try {
+        if (company.twilioAccountSid && company.twilioAuthToken && company.twilioPhoneNumber) {
+          const twilioClient = twilio(company.twilioAccountSid, company.twilioAuthToken);
+          const takeoverMessage = `🤖 Hi! Our human agent has stepped away temporarily. Our AI assistant will continue helping you with automated responses until the agent returns.`;
+
+          const toWhatsApp = from.startsWith("whatsapp:") ? from : `whatsapp:${from}`;
+          const fromWhatsApp = company.twilioPhoneNumber.startsWith("whatsapp:")
+            ? company.twilioPhoneNumber
+            : `whatsapp:${company.twilioPhoneNumber}`;
+
+          await twilioClient.messages.create({
+            from: fromWhatsApp,
+            to: toWhatsApp,
+            body: takeoverMessage,
+          });
+
+          console.log(`📤 Sent AI takeover notification to ${toWhatsApp}`);
+        }
+      } catch (twilioError) {
+        console.error('❌ Error sending AI takeover WhatsApp notification:', twilioError);
+      }
     }
 
     // 3️⃣ Load recent ticket message history for AI context
@@ -679,10 +796,18 @@ app.post("/agent/send-message", async (req, res) => {
     });
 
     // 2️⃣ Update ticket updatedAt and lastMessage
+    // Also turn off AI when respondent sends a message (they're actively handling)
+    const shouldTurnOffAI = ticketData.assignedEmail === userEmail && ticketData.aiEnabled;
+
     await ticketRef.update({
       lastMessage: body,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...(shouldTurnOffAI && { aiEnabled: false }), // Turn off AI when respondent actively responds
     });
+
+    if (shouldTurnOffAI) {
+      console.log(`🤖 AI turned OFF for ticket ${convId} - respondent ${agentName} is actively responding`);
+    }
 
     // 3️⃣ Send WhatsApp message via Twilio
     const companyTwilioClient = company.twilioAccountSid && company.twilioAuthToken

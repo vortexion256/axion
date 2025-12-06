@@ -16,6 +16,7 @@ export default function SettingsPage() {
     geminiApiKey: '',
     aiStartingMessage: '',
     aiPromptTemplate: '',
+    aiWaitMinutes: 5, // Default 5 minutes
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -36,6 +37,7 @@ export default function SettingsPage() {
         geminiApiKey: company.geminiApiKey || '',
         aiStartingMessage: company.aiStartingMessage || '',
         aiPromptTemplate: company.aiPromptTemplate || '',
+        aiWaitMinutes: company.aiWaitMinutes || 5,
       });
     }
   }, [company]);
@@ -323,6 +325,35 @@ export default function SettingsPage() {
                 />
                 <small style={{ color: '#666', display: 'block', marginTop: '0.5rem' }}>
                   Use {'{companyName}'} and {'{history}'} as placeholders in your prompt.
+                </small>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                  AI Wait Time (minutes)
+                </label>
+                <select
+                  value={formData.aiWaitMinutes}
+                  onChange={(e) => handleInputChange('aiWaitMinutes', parseInt(e.target.value))}
+                  style={{
+                    width: '200px',
+                    padding: '0.75rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '16px',
+                    backgroundColor: 'white'
+                  }}
+                >
+                  <option value={1}>1 minute</option>
+                  <option value={2}>2 minutes</option>
+                  <option value={3}>3 minutes</option>
+                  <option value={5}>5 minutes</option>
+                  <option value={10}>10 minutes</option>
+                  <option value={15}>15 minutes</option>
+                  <option value={30}>30 minutes</option>
+                </select>
+                <small style={{ color: '#666', display: 'block', marginTop: '0.5rem' }}>
+                  How long AI should wait after a respondent goes offline before responding to customer messages.
                 </small>
               </div>
             </div>

@@ -102,10 +102,16 @@ export function AuthProvider({ children }) {
           );
 
           if (userAsRespondent) {
+            // Set respondent as online by default when they log in
+            await updateDoc(userAsRespondent.ref, {
+              isOnline: true,
+              lastSeen: new Date(),
+            });
+
             otherRespondentCompanies.push({
               id: companyDoc.id,
               ...companyDoc.data(),
-              respondentData: { id: userAsRespondent.id, ...userAsRespondent.data() },
+              respondentData: { id: userAsRespondent.id, ...userAsRespondent.data(), isOnline: true },
               userRole: 'respondent'
             });
           }
@@ -375,7 +381,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const updateRespondentStatus = async (isOnline) => {
+  const updateRespondentStatus = async (isOnline, wasPreviouslyOffline = false) => {
     if (!company || userRole !== 'respondent') return;
 
     try {
@@ -392,12 +398,64 @@ export function AuthProvider({ children }) {
           isOnline,
           lastSeen: new Date(),
         });
+
+        // If coming online, turn off AI for assigned tickets and notify
+        if (isOnline && wasPreviouslyOffline) {
+          await turnOffAIForAssignedTickets();
+        }
+
         console.log(`✅ Respondent status updated successfully for ${user.email}`);
       } else {
         console.log(`❌ Respondent document not found for ${user.email}`);
       }
     } catch (error) {
       console.error('❌ Error updating respondent status:', error);
+    }
+  };
+
+  const turnOffAIForAssignedTickets = async () => {
+    if (!company || userRole !== 'respondent') return;
+
+    try {
+      console.log(`🤖 Turning off AI for tickets assigned to ${user.email}`);
+
+      // Find all tickets assigned to this respondent
+      const ticketsRef = collection(db, 'companies', company.id, 'tickets');
+      const assignedTicketsQuery = query(
+        ticketsRef,
+        where('assignedEmail', '==', user.email),
+        where('status', 'in', ['open', 'pending'])
+      );
+
+      const assignedTicketsSnap = await getDocs(assignedTicketsQuery);
+
+      for (const ticketDoc of assignedTicketsSnap.docs) {
+        const ticketData = ticketDoc.data();
+
+        // Turn off AI for this ticket
+        await updateDoc(ticketDoc.ref, {
+          aiEnabled: false,
+          updatedAt: new Date(),
+        });
+
+        // Add a system message notifying about agent joining
+        const systemMsgRef = ticketDoc.ref.collection('messages').doc(`system-agent-joined-${Date.now()}`);
+        await systemMsgRef.set({
+          from: "System",
+          role: "system",
+          body: `👋 Agent ${user.displayName || user.email.split('@')[0]} has joined the conversation. AI assistant is now offline.`,
+          createdAt: new Date(),
+        });
+
+        // Note: WhatsApp notifications will be sent by the backend when customer messages come in
+        // This prevents sending duplicate notifications and ensures proper webhook flow
+
+        console.log(`✅ Turned off AI for ticket ${ticketDoc.id}`);
+      }
+
+      console.log(`🤖 AI turned off for ${assignedTicketsSnap.size} assigned tickets`);
+    } catch (error) {
+      console.error('❌ Error turning off AI for assigned tickets:', error);
     }
   };
 
@@ -478,6 +536,7 @@ export function AuthProvider({ children }) {
     selectCompanyContext,
     updateRespondentStatus,
     updateAdminStatus,
+    turnOffAIForAssignedTickets,
   };
 
   return (
