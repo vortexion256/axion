@@ -15,8 +15,9 @@
 
 ### Step 2: Deploy to Vercel
 1. Connect your GitHub repository to Vercel
-2. Set the root directory to `apps/web`
-3. Configure environment variables in Vercel:
+2. Set the **Root Directory** to `apps/web`
+3. **No vercel.json needed** - Next.js API routes work automatically
+4. Configure environment variables in Vercel:
 
 ```
 FIREBASE_SERVICE_ACCOUNT_KEY=<paste-entire-json-here>
@@ -62,13 +63,19 @@ In your Firebase Firestore, update your company document with:
 ### Build Fails
 - Ensure `FIREBASE_SERVICE_ACCOUNT_KEY` is set in Vercel environment variables
 - Check that the JSON format is valid (no extra characters)
+- **No vercel.json needed** - Next.js handles API routes automatically
 
 ### Webhook Not Working
-- Verify the webhook URL in Twilio matches your Vercel deployment
+- Verify the webhook URL in Twilio matches your Vercel deployment: `https://your-app.vercel.app/api/webhook/whatsapp/{companyId}`
 - Check Vercel function logs for errors
 - Ensure company configuration is complete in Firestore
+
+### API Routes Not Found
+- Vercel automatically detects Next.js API routes
+- Ensure routes are in `src/app/api/` directory
+- Check Vercel deployment logs for any build errors
 
 ### AI Not Responding
 - Check that `geminiApiKey` is set in company settings
 - Verify Twilio credentials are correct
-- Check Vercel logs for API errors
+- Check Vercel function logs for API errors
