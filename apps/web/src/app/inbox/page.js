@@ -40,7 +40,11 @@ export default function InboxPage() {
   const [expandedHistory, setExpandedHistory] = useState(new Set()); // Track which historical tickets are expanded
   const [showCumulativeHistory, setShowCumulativeHistory] = useState(false); // Toggle for cumulative view
   const [selectedMedia, setSelectedMedia] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedAudio, setRecordedAudio] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
 
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -53,6 +57,101 @@ export default function InboxPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showEmojiPicker]);
+
+  // Handle media file selection and preview generation
+  const handleMediaSelect = async (file) => {
+    setSelectedMedia(file);
+    setRecordedAudio(null); // Clear any recorded audio
+
+    if (file.type.startsWith('image/')) {
+      // Generate image preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setMediaPreview({
+          type: 'image',
+          url: e.target.result,
+          file: file
+        });
+      };
+      reader.readAsDataURL(file);
+    } else if (file.type.startsWith('audio/') || file.type.startsWith('video/')) {
+      // For existing audio/video files
+      const url = URL.createObjectURL(file);
+      setMediaPreview({
+        type: file.type.startsWith('audio/') ? 'audio' : 'video',
+        url: url,
+        file: file
+      });
+    } else {
+      // For documents and other files
+      setMediaPreview({
+        type: 'document',
+        file: file,
+        url: null
+      });
+    }
+  };
+
+  // Voice recording functions
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        const audioFile = new File([blob], 'voice-note.webm', { type: 'audio/webm' });
+
+        setRecordedAudio(audioFile);
+        setSelectedMedia(audioFile);
+        setMediaPreview({
+          type: 'audio',
+          url: url,
+          file: audioFile,
+          isRecording: false
+        });
+
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      recorder.start();
+
+      setMediaPreview({
+        type: 'recording',
+        url: null,
+        isRecording: true
+      });
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      alert('Could not access microphone. Please check permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+      setMediaRecorder(null);
+    }
+  };
+
+  // Clear media selection
+  const clearMedia = () => {
+    setSelectedMedia(null);
+    setMediaPreview(null);
+    setRecordedAudio(null);
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      setMediaRecorder(null);
+    }
+    setIsRecording(false);
+  };
 
   // Request notification permission on mount
   useEffect(() => {
@@ -677,17 +776,52 @@ export default function InboxPage() {
             requestData.mediaUrl = mediaUrl;
             requestData.mediaType = selectedMedia.type;
             console.log("📎 Image converted to data URL for sending");
-          } else {
-            // For larger files or non-images, we'd need cloud storage
-            // For now, show a message that large files aren't supported yet
-            alert(`File "${selectedMedia.name}" is too large or not supported yet. Please use images under 1MB.`);
+          }
+          // For recorded audio (voice notes), convert to data URL
+          else if (recordedAudio && selectedMedia.type.startsWith('audio/') && selectedMedia.size <= 5 * 1024 * 1024) {
+            const mediaUrl = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target.result);
+              reader.readAsDataURL(selectedMedia);
+            });
+            requestData.mediaUrl = mediaUrl;
+            requestData.mediaType = selectedMedia.type;
+            console.log("🎵 Voice note converted to data URL for sending");
+          }
+          // For other audio/video files
+          else if ((selectedMedia.type.startsWith('audio/') || selectedMedia.type.startsWith('video/')) && selectedMedia.size <= 5 * 1024 * 1024) {
+            const mediaUrl = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target.result);
+              reader.readAsDataURL(selectedMedia);
+            });
+            requestData.mediaUrl = mediaUrl;
+            requestData.mediaType = selectedMedia.type;
+            console.log("📎 Media file converted to data URL for sending");
+          }
+          else {
+            // For larger files or unsupported types, show appropriate message
+            const isImage = selectedMedia.type.startsWith('image/');
+            const isMedia = selectedMedia.type.startsWith('audio/') || selectedMedia.type.startsWith('video/');
+
+            if (isImage) {
+              alert(`Image "${selectedMedia.name}" is too large. Please use images under 1MB.`);
+            } else if (isMedia) {
+              alert(`Media file "${selectedMedia.name}" is too large. Please use media files under 5MB.`);
+            } else {
+              alert(`File "${selectedMedia.name}" is not supported yet. Please use images, audio, or video files.`);
+            }
             setSelectedMedia(null);
+            setMediaPreview(null);
+            setRecordedAudio(null);
             return;
           }
         } catch (error) {
           console.error("❌ Error processing media file:", error);
           alert("Error processing media file. Please try again.");
           setSelectedMedia(null);
+          setMediaPreview(null);
+          setRecordedAudio(null);
           return;
         }
       }
@@ -1548,46 +1682,218 @@ export default function InboxPage() {
         {selectedTicket && (
           <div style={{ marginTop: "0.5rem" }}>
             {/* Media preview */}
-            {selectedMedia && (
+            {mediaPreview && (
               <div style={{
                 marginBottom: "0.5rem",
-                padding: "0.5rem",
-                backgroundColor: "#f0f8ff",
-                borderRadius: "4px",
-                border: "1px solid #1976d2",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem"
+                padding: "0.75rem",
+                backgroundColor: "#f8f9fa",
+                borderRadius: "8px",
+                border: "1px solid #dee2e6",
+                maxWidth: "300px"
               }}>
-                <span style={{ fontSize: "1.2rem" }}>
-                  {selectedMedia.type.startsWith('image/') ? '🖼️' :
-                   selectedMedia.type.startsWith('audio/') ? '🎵' :
-                   selectedMedia.type.startsWith('video/') ? '🎥' :
-                   selectedMedia.name.toLowerCase().endsWith('.vcf') ? '👤' :
-                   '📄'}
-                </span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "0.875rem", fontWeight: "bold" }}>
-                    {selectedMedia.name}
+                {mediaPreview.type === 'image' && (
+                  <div style={{ textAlign: "center" }}>
+                    <img
+                      src={mediaPreview.url}
+                      alt="Preview"
+                      style={{
+                        maxWidth: "100%",
+                        maxHeight: "200px",
+                        borderRadius: "4px",
+                        border: "1px solid #e9ecef"
+                      }}
+                    />
+                    <div style={{
+                      marginTop: "0.5rem",
+                      fontSize: "0.875rem",
+                      color: "#6c757d",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <span>🖼️ {mediaPreview.file.name}</span>
+                      <button
+                        onClick={clearMedia}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#dc3545",
+                          cursor: "pointer",
+                          fontSize: "1.2rem",
+                          padding: "0"
+                        }}
+                        title="Remove image"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ fontSize: "0.75rem", color: "#666" }}>
-                    {(selectedMedia.size / 1024 / 1024).toFixed(2)} MB • {selectedMedia.type || 'Unknown type'}
+                )}
+
+                {mediaPreview.type === 'recording' && (
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{
+                      width: "60px",
+                      height: "60px",
+                      borderRadius: "50%",
+                      backgroundColor: isRecording ? "#dc3545" : "#6c757d",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      margin: "0 auto 1rem",
+                      animation: isRecording ? "pulse 1s infinite" : "none",
+                      boxShadow: isRecording ? "0 0 20px rgba(220, 53, 69, 0.5)" : "none"
+                    }}>
+                      <span style={{ fontSize: "1.5rem", color: "white" }}>
+                        {isRecording ? '🎤' : '⏹️'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "0.875rem", color: "#6c757d" }}>
+                      {isRecording ? 'Recording voice note...' : 'Voice note ready'}
+                    </div>
+                    <div style={{ marginTop: "0.5rem" }}>
+                      <button
+                        onClick={isRecording ? stopRecording : clearMedia}
+                        style={{
+                          padding: "0.25rem 0.75rem",
+                          borderRadius: "4px",
+                          border: "1px solid #dee2e6",
+                          backgroundColor: isRecording ? "#dc3545" : "#6c757d",
+                          color: "white",
+                          cursor: "pointer",
+                          fontSize: "0.875rem"
+                        }}
+                      >
+                        {isRecording ? 'Stop Recording' : 'Cancel'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <button
-                  onClick={() => setSelectedMedia(null)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#d32f2f",
-                    cursor: "pointer",
-                    fontSize: "1.2rem",
-                    padding: "0.25rem"
-                  }}
-                  title="Remove attachment"
-                >
-                  ×
-                </button>
+                )}
+
+                {mediaPreview.type === 'audio' && !mediaPreview.isRecording && (
+                  <div>
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      marginBottom: "0.5rem"
+                    }}>
+                      <span style={{ fontSize: "1.2rem" }}>🎵</span>
+                      <span style={{ fontSize: "0.875rem", fontWeight: "bold" }}>
+                        {recordedAudio ? 'Voice Note' : 'Audio File'}
+                      </span>
+                    </div>
+                    <audio
+                      controls
+                      style={{
+                        width: "100%",
+                        maxWidth: "250px",
+                        borderRadius: "4px"
+                      }}
+                    >
+                      <source src={mediaPreview.url} type={mediaPreview.file.type} />
+                      Audio playback not supported
+                    </audio>
+                    <div style={{
+                      marginTop: "0.5rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <span style={{ fontSize: "0.75rem", color: "#6c757d" }}>
+                        {(mediaPreview.file.size / 1024 / 1024).toFixed(2)} MB
+                      </span>
+                      <button
+                        onClick={clearMedia}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#dc3545",
+                          cursor: "pointer",
+                          fontSize: "1.2rem"
+                        }}
+                        title="Remove audio"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {mediaPreview.type === 'video' && (
+                  <div>
+                    <video
+                      controls
+                      style={{
+                        width: "100%",
+                        maxWidth: "250px",
+                        borderRadius: "4px",
+                        border: "1px solid #e9ecef"
+                      }}
+                    >
+                      <source src={mediaPreview.url} type={mediaPreview.file.type} />
+                      Video playback not supported
+                    </video>
+                    <div style={{
+                      marginTop: "0.5rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <span style={{ fontSize: "0.75rem", color: "#6c757d" }}>
+                        🎥 {(mediaPreview.file.size / 1024 / 1024).toFixed(2)} MB
+                      </span>
+                      <button
+                        onClick={clearMedia}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#dc3545",
+                          cursor: "pointer",
+                          fontSize: "1.2rem"
+                        }}
+                        title="Remove video"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {mediaPreview.type === 'document' && (
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.75rem"
+                  }}>
+                    <span style={{ fontSize: "2rem" }}>
+                      {mediaPreview.file.name.toLowerCase().endsWith('.pdf') ? '📕' :
+                       mediaPreview.file.name.toLowerCase().endsWith('.doc') || mediaPreview.file.name.toLowerCase().endsWith('.docx') ? '📄' :
+                       mediaPreview.file.name.toLowerCase().endsWith('.vcf') ? '👤' : '📎'}
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: "0.875rem", fontWeight: "bold" }}>
+                        {mediaPreview.file.name}
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "#6c757d" }}>
+                        {(mediaPreview.file.size / 1024 / 1024).toFixed(2)} MB • {mediaPreview.file.type || 'Document'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={clearMedia}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#dc3545",
+                        cursor: "pointer",
+                        fontSize: "1.2rem"
+                      }}
+                      title="Remove file"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1599,8 +1905,31 @@ export default function InboxPage() {
                 alignItems: "center",
               }}
             >
+              {/* Voice recording button */}
+              <button
+                type="button"
+                onClick={isRecording ? stopRecording : startRecording}
+                style={{
+                  fontSize: "1.2rem",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: isRecording ? "#dc3545" : "#6c757d",
+                  padding: "0.25rem",
+                  borderRadius: "50%",
+                  width: "32px",
+                  height: "32px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+                title={isRecording ? "Stop recording" : "Record voice note"}
+              >
+                {isRecording ? '⏹️' : '🎤'}
+              </button>
+
               {/* File input */}
-              <label style={{ cursor: "pointer", fontSize: "1.2rem" }}>
+              <label style={{ cursor: "pointer", fontSize: "1.2rem", padding: "0.25rem" }} title="Attach file">
                 📎
                 <input
                   type="file"
@@ -1637,7 +1966,7 @@ export default function InboxPage() {
                         return;
                       }
 
-                      setSelectedMedia(file);
+                      handleMediaSelect(file);
                     }
                   }}
                   style={{ display: "none" }}
@@ -1676,19 +2005,19 @@ export default function InboxPage() {
               {/* Send button */}
               <button
                 type="submit"
-                disabled={isSending || (!agentMessage.trim() && !selectedMedia)}
+                disabled={isSending || (!agentMessage.trim() && !selectedMedia) || isRecording}
                 style={{
                   padding: "0.5rem 1rem",
                   borderRadius: "4px",
                   border: "none",
-                  backgroundColor: "#1976d2",
-                  color: "white",
+                  backgroundColor: isRecording ? "#ffc107" : "#1976d2",
+                  color: isRecording ? "#000" : "white",
                   cursor:
-                    isSending || (!agentMessage.trim() && !selectedMedia) ? "not-allowed" : "pointer",
-                  opacity: isSending || (!agentMessage.trim() && !selectedMedia) ? 0.7 : 1,
+                    isSending || (!agentMessage.trim() && !selectedMedia) || isRecording ? "not-allowed" : "pointer",
+                  opacity: isSending || (!agentMessage.trim() && !selectedMedia) || isRecording ? 0.7 : 1,
                 }}
               >
-                {isSending ? "Sending..." : "Send"}
+                {isSending ? "Sending..." : isRecording ? "Recording..." : "Send"}
               </button>
             </form>
 
