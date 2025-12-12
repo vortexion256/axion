@@ -1,6 +1,12 @@
 {
   "functions": {
-    "src/app/api/**/*.js": {
+    "src/app/api/agent/send-message/route.js": {
+      "maxDuration": 30
+    },
+    "src/app/api/respondent/status/route.js": {
+      "maxDuration": 30
+    },
+    "src/app/api/webhook/whatsapp/[tenantId]/route.js": {
       "maxDuration": 30
     }
   }
