@@ -382,8 +382,8 @@ export default function InboxPage() {
     loadCustomerHistory();
   }, [selectedTicket, tenantId]);
 
-  // Use relative URLs for API calls (works with Vercel and local development)
-  const apiBase = "";
+  // Use API routes for all deployments
+  const apiBase = "/api";
 
   console.log("API Base URL:", apiBase);
   console.log("NEXT_PUBLIC_API_BASE_URL:", process.env.NEXT_PUBLIC_API_BASE_URL);

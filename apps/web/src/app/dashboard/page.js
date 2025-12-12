@@ -81,8 +81,8 @@ export default function DashboardPage() {
       setIsTesting(true);
       setTestResult(null);
 
-      // Use relative URL for API calls
-      const apiBase = "";
+      // Use API routes for all deployments
+      const apiBase = "/api";
       const response = await fetch(`${apiBase}/test-webhook/${company.id}`, {
         method: 'POST',
         headers: {
