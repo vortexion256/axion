@@ -68,12 +68,19 @@ export async function POST(request, { params }) {
     }
 
     const db = admin.firestore();
+    console.log("📋 Full params object:", params);
     const tenantId = params.tenantId;
     console.log("🔔 Incoming /webhook/whatsapp request for tenant:", tenantId);
+    console.log("🔗 Full URL:", request.url);
 
     if (!tenantId) {
       console.error("❌ No tenantId provided in URL");
-      return NextResponse.json({ error: "Tenant ID is required" }, { status: 400 });
+      console.error("❌ Params received:", JSON.stringify(params, null, 2));
+      return NextResponse.json({
+        error: "Tenant ID is required",
+        receivedParams: params,
+        url: request.url
+      }, { status: 400 });
     }
 
     // Handle both JSON (for testing) and x-www-form-urlencoded (for Twilio)
