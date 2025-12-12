@@ -26,8 +26,24 @@ export async function POST(request, { params }) {
     const tenantId = params.tenantId;
     console.log("🧪 Test webhook called for tenant:", tenantId);
 
-    // Handle both our manual JSON tests and Twilio's x-www-form-urlencoded payload
-    const body = await request.json();
+    if (!tenantId) {
+      console.error("❌ No tenantId provided in URL");
+      return NextResponse.json({ error: "Tenant ID is required" }, { status: 400 });
+    }
+
+    // Handle both JSON (for testing) and x-www-form-urlencoded (for Twilio)
+    let body;
+    const contentType = request.headers.get('content-type');
+
+    if (contentType?.includes('application/json')) {
+      // JSON request (for testing)
+      body = await request.json();
+    } else {
+      // Form data request (Twilio)
+      const formData = await request.formData();
+      body = Object.fromEntries(formData);
+    }
+
     const { message, from } = body;
 
     // Ensure Firebase Admin is initialized
