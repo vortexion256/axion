@@ -6,18 +6,21 @@ import twilio from 'twilio';
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+    } catch (error) {
+      console.error('❌ Error parsing FIREBASE_SERVICE_ACCOUNT_KEY:', error.message);
+      // During build/static generation, don't fail - environment variables will be set at runtime
+      console.warn('⚠️ Firebase Admin initialization failed during build - will retry at runtime');
+    }
   } else {
-    // For local development, you can still use the service account file
-    // This will be handled by the existing firebase.js configuration
-    console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT_KEY not found, using default credentials');
+    // During build/static generation, don't fail - environment variables will be set at runtime in Vercel
+    console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT_KEY not set during build - will be initialized at runtime in Vercel');
   }
 }
-
-const db = admin.firestore();
 
 // Helper function to get user initials
 function getUserInitials(name) {
@@ -31,6 +34,25 @@ function getUserInitials(name) {
 
 export async function POST(request) {
   try {
+    // Ensure Firebase Admin is initialized
+    if (!admin.apps.length) {
+      if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+        try {
+          const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+          });
+        } catch (error) {
+          console.error('❌ Error initializing Firebase Admin at runtime:', error.message);
+          return NextResponse.json({ error: 'Firebase configuration error' }, { status: 500 });
+        }
+      } else {
+        console.error('❌ FIREBASE_SERVICE_ACCOUNT_KEY not available at runtime');
+        return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      }
+    }
+
+    const db = admin.firestore();
     const { convId, body, tenantId, userName, userEmail } = await request.json();
 
     if (!convId || !body || !tenantId) {

@@ -233,7 +233,7 @@ export default function SettingsPage() {
                     fontFamily: 'monospace',
                     wordBreak: 'break-all'
                   }}>
-                    {`${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ellen-nonabridgable-samual.ngrok-free.dev'}/webhook/whatsapp/${company.id}`}
+                    {`${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhook/whatsapp/${company.id}`}
                   </div>
                   <small style={{ color: '#666', display: 'block', marginTop: '0.5rem' }}>
                     Copy this URL to your Twilio WhatsApp webhook configuration.

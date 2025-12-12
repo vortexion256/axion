@@ -7,18 +7,21 @@ import axios from 'axios';
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+    } catch (error) {
+      console.error('❌ Error parsing FIREBASE_SERVICE_ACCOUNT_KEY:', error.message);
+      // During build/static generation, don't fail - environment variables will be set at runtime
+      console.warn('⚠️ Firebase Admin initialization failed during build - will retry at runtime');
+    }
   } else {
-    // For local development, you can still use the service account file
-    // This will be handled by the existing firebase.js configuration
-    console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT_KEY not found, using default credentials');
+    // During build/static generation, don't fail - environment variables will be set at runtime in Vercel
+    console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT_KEY not set during build - will be initialized at runtime in Vercel');
   }
 }
-
-const db = admin.firestore();
 
 // Helper function to get user initials
 function getUserInitials(name) {
@@ -30,48 +33,29 @@ function getUserInitials(name) {
     .substring(0, 2);
 }
 
-// Periodic cleanup for stale respondent statuses
-setInterval(async () => {
+// Note: Periodic cleanup removed for Vercel deployment
+// In serverless environments, use scheduled functions or external cron jobs
+export async function POST(request, { params }) {
   try {
-    console.log('🧹 Running periodic respondent status cleanup...');
-
-    // Get all companies
-    const companiesSnap = await db.collection('companies').get();
-
-    for (const companyDoc of companiesSnap.docs) {
-      const companyId = companyDoc.id;
-      const respondentsRef = companyDoc.ref.collection('respondents');
-
-      // Get all respondents who are marked as online
-      const onlineRespondentsSnap = await respondentsRef.where('isOnline', '==', true).get();
-
-      for (const respondentDoc of onlineRespondentsSnap.docs) {
-        const respondentData = respondentDoc.data();
-
-        if (respondentData.lastSeen) {
-          const lastSeen = respondentData.lastSeen.toDate ? respondentData.lastSeen.toDate() : new Date(respondentData.lastSeen);
-          const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-
-          if (lastSeen < tenMinutesAgo) {
-            console.log(`🚫 Periodic cleanup: Marking ${respondentData.email} offline (last seen ${Math.floor((Date.now() - lastSeen.getTime()) / (1000 * 60))} minutes ago)`);
-
-            await respondentDoc.ref.update({
-              isOnline: false,
-              lastSeen: respondentData.lastSeen, // Keep original timestamp
-            });
-          }
+    // Ensure Firebase Admin is initialized
+    if (!admin.apps.length) {
+      if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+        try {
+          const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+          });
+        } catch (error) {
+          console.error('❌ Error initializing Firebase Admin at runtime:', error.message);
+          return NextResponse.json({ error: 'Firebase configuration error' }, { status: 500 });
         }
+      } else {
+        console.error('❌ FIREBASE_SERVICE_ACCOUNT_KEY not available at runtime');
+        return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
       }
     }
 
-    console.log('✅ Periodic cleanup completed');
-  } catch (error) {
-    console.error('❌ Error in periodic cleanup:', error);
-  }
-}, 5 * 60 * 1000); // Run every 5 minutes
-
-export async function POST(request, { params }) {
-  try {
+    const db = admin.firestore();
     const tenantId = params.tenantId;
     console.log("🔔 Incoming /webhook/whatsapp request for tenant:", tenantId);
 
@@ -334,8 +318,8 @@ export async function POST(request, { params }) {
         aiShouldRespond = true; // Fallback to AI if respondent not found
       }
     } else {
-      console.log(`👨‍💼 Ticket assigned to Admin or no email - AI will respond`);
-      aiShouldRespond = true; // Admin tickets always get AI
+      console.log(`👨‍💼 Ticket assigned to Admin or no email - checking AI enabled setting: ${aiEnabled}`);
+      aiShouldRespond = aiEnabled; // Respect AI enabled setting even for Admin tickets
     }
 
     // If AI should not respond (assigned respondent is online), only store the user message

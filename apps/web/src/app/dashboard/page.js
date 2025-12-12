@@ -81,7 +81,8 @@ export default function DashboardPage() {
       setIsTesting(true);
       setTestResult(null);
 
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ellen-nonabridgable-samual.ngrok-free.dev';
+      // Use relative URL for API calls
+      const apiBase = "";
       const response = await fetch(`${apiBase}/test-webhook/${company.id}`, {
         method: 'POST',
         headers: {
@@ -415,7 +416,7 @@ export default function DashboardPage() {
             <h3 style={{ marginTop: 0, color: '#333' }}>Setup Status</h3>
               <div style={{ marginBottom: '1rem', fontSize: '14px', color: '#666' }}>
               <strong>Company ID:</strong> {company.id}<br/>
-              <strong>Webhook URL:</strong> {`${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://ellen-nonabridgable-samual.ngrok-free.dev'}/webhook/whatsapp/${company.id}`}
+              <strong>Webhook URL:</strong> {`${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhook/whatsapp/${company.id}`}
               {company.hasTwilioErrors && (
                 <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#ffeaea', borderRadius: '4px', border: '1px solid #f44336' }}>
                   <strong style={{ color: '#d32f2f' }}>⚠️ Active Delivery Issues</strong><br/>

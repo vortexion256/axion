@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "apps/web/src/app/api/**/*.js": {
+      "maxDuration": 30
+    }
+  },
+  "regions": ["fra1"],
+  "buildCommand": "cd apps/web && npm run build",
+  "outputDirectory": "apps/web/.next"
+}

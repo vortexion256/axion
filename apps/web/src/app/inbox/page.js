@@ -382,8 +382,8 @@ export default function InboxPage() {
     loadCustomerHistory();
   }, [selectedTicket, tenantId]);
 
-  const apiBase =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+  // Use relative URLs for API calls (works with Vercel and local development)
+  const apiBase = "";
 
   console.log("API Base URL:", apiBase);
   console.log("NEXT_PUBLIC_API_BASE_URL:", process.env.NEXT_PUBLIC_API_BASE_URL);
