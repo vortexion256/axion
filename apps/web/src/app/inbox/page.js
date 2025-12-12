@@ -42,6 +42,18 @@ export default function InboxPage() {
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showEmojiPicker && !event.target.closest('.emoji-picker')) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showEmojiPicker]);
+
   // Request notification permission on mount
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -60,61 +72,114 @@ export default function InboxPage() {
         const isImage = mediaType.startsWith('image/');
         const isAudio = mediaType.startsWith('audio/');
         const isVideo = mediaType.startsWith('video/');
+        const isDocument = mediaType.includes('pdf') || mediaType.includes('document') || mediaType.includes('text');
+        const isContact = mediaType.includes('vcf') || media.url.includes('.vcf');
 
         if (isImage) {
           content.push(
             <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
               <img
                 src={media.url}
-                alt="Attachment"
+                alt="Image attachment"
                 style={{
-                  maxWidth: '200px',
-                  maxHeight: '200px',
+                  maxWidth: '250px',
+                  maxHeight: '250px',
                   borderRadius: '8px',
-                  border: '1px solid #e0e0e0'
+                  border: '1px solid #e0e0e0',
+                  cursor: 'pointer'
                 }}
+                onClick={() => window.open(media.url, '_blank')}
                 onError={(e) => {
                   e.target.style.display = 'none';
                   e.target.nextSibling.style.display = 'block';
                 }}
               />
               <div style={{ display: 'none', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px', marginTop: '0.5rem' }}>
-                📎 Image attachment
+                🖼️ Image attachment (could not load)
               </div>
             </div>
           );
         } else if (isAudio) {
-          content.push(
-            <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
-              <audio controls style={{ maxWidth: '250px' }}>
-                <source src={media.url} type={mediaType} />
-                🎵 Audio message
-              </audio>
-            </div>
-          );
-        } else if (isVideo) {
-          content.push(
-            <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
-              <video controls style={{ maxWidth: '250px', borderRadius: '4px' }}>
-                <source src={media.url} type={mediaType} />
-                🎥 Video message
-              </video>
-            </div>
-          );
-        } else {
-          // Document or other file
           content.push(
             <div key={`media-${index}`} style={{
               marginBottom: '0.5rem',
               padding: '0.5rem',
               backgroundColor: '#f0f8ff',
               border: '1px solid #1976d2',
-              borderRadius: '4px',
-              display: 'inline-block'
+              borderRadius: '8px',
+              maxWidth: '250px'
             }}>
-              📄 <a href={media.url} target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'none' }}>
-                {mediaType.split('/')[1]?.toUpperCase() || 'File'} Attachment
-              </a>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <span>🎵</span>
+                <span style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>Voice Note</span>
+              </div>
+              <audio controls style={{ width: '100%' }}>
+                <source src={media.url} type={mediaType} />
+                Your browser does not support audio playback.
+              </audio>
+            </div>
+          );
+        } else if (isVideo) {
+          content.push(
+            <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
+              <video controls style={{ maxWidth: '250px', borderRadius: '4px', border: '1px solid #e0e0e0' }}>
+                <source src={media.url} type={mediaType} />
+                🎥 Video message (playback not supported)
+              </video>
+            </div>
+          );
+        } else if (isContact) {
+          content.push(
+            <div key={`media-${index}`} style={{
+              marginBottom: '0.5rem',
+              padding: '0.75rem',
+              backgroundColor: '#e8f5e8',
+              border: '1px solid #4caf50',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <span>👤</span>
+              <div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>Contact Card</div>
+                <div style={{ fontSize: '0.75rem', color: '#666' }}>
+                  <a href={media.url} target="_blank" rel="noopener noreferrer" style={{ color: '#4caf50', textDecoration: 'none' }}>
+                    Download VCF file
+                  </a>
+                </div>
+              </div>
+            </div>
+          );
+        } else {
+          // Document or other file
+          const fileIcon = mediaType.includes('pdf') ? '📕' :
+                          mediaType.includes('word') || mediaType.includes('document') ? '📄' :
+                          '📎';
+
+          content.push(
+            <div key={`media-${index}`} style={{
+              marginBottom: '0.5rem',
+              padding: '0.75rem',
+              backgroundColor: '#fff3cd',
+              border: '1px solid #ffc107',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              maxWidth: '250px'
+            }}>
+              <span style={{ fontSize: '1.2rem' }}>{fileIcon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>
+                  {mediaType.split('/')[1]?.toUpperCase() || 'File'} Document
+                </div>
+                <div style={{ fontSize: '0.75rem' }}>
+                  <a href={media.url} target="_blank" rel="noopener noreferrer" style={{ color: '#856404', textDecoration: 'none' }}>
+                    Download file
+                  </a>
+                </div>
+              </div>
             </div>
           );
         }
@@ -601,11 +666,30 @@ export default function InboxPage() {
 
       // Add media if selected
       if (selectedMedia) {
-        // For now, we'll need to upload the file and get a URL
-        // This is a placeholder - we'll implement file upload next
-        console.log("📎 Media selected but upload not yet implemented:", selectedMedia);
-        // requestData.mediaUrl = uploadedMediaUrl;
-        // requestData.mediaType = selectedMedia.type;
+        try {
+          // For images smaller than 1MB, convert to data URL
+          if (selectedMedia.type.startsWith('image/') && selectedMedia.size <= 1024 * 1024) {
+            const mediaUrl = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target.result);
+              reader.readAsDataURL(selectedMedia);
+            });
+            requestData.mediaUrl = mediaUrl;
+            requestData.mediaType = selectedMedia.type;
+            console.log("📎 Image converted to data URL for sending");
+          } else {
+            // For larger files or non-images, we'd need cloud storage
+            // For now, show a message that large files aren't supported yet
+            alert(`File "${selectedMedia.name}" is too large or not supported yet. Please use images under 1MB.`);
+            setSelectedMedia(null);
+            return;
+          }
+        } catch (error) {
+          console.error("❌ Error processing media file:", error);
+          alert("Error processing media file. Please try again.");
+          setSelectedMedia(null);
+          return;
+        }
       }
 
       const resp = await fetch(`${apiBase}/agent/send-message`, {
@@ -1475,10 +1559,21 @@ export default function InboxPage() {
                 alignItems: "center",
                 gap: "0.5rem"
               }}>
-                <span>📎</span>
-                <span style={{ flex: 1, fontSize: "0.875rem" }}>
-                  {selectedMedia.name} ({(selectedMedia.size / 1024).toFixed(1)} KB)
+                <span style={{ fontSize: "1.2rem" }}>
+                  {selectedMedia.type.startsWith('image/') ? '🖼️' :
+                   selectedMedia.type.startsWith('audio/') ? '🎵' :
+                   selectedMedia.type.startsWith('video/') ? '🎥' :
+                   selectedMedia.name.toLowerCase().endsWith('.vcf') ? '👤' :
+                   '📄'}
                 </span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: "0.875rem", fontWeight: "bold" }}>
+                    {selectedMedia.name}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "#666" }}>
+                    {(selectedMedia.size / 1024 / 1024).toFixed(2)} MB • {selectedMedia.type || 'Unknown type'}
+                  </div>
+                </div>
                 <button
                   onClick={() => setSelectedMedia(null)}
                   style={{
@@ -1486,8 +1581,10 @@ export default function InboxPage() {
                     border: "none",
                     color: "#d32f2f",
                     cursor: "pointer",
-                    fontSize: "1.2rem"
+                    fontSize: "1.2rem",
+                    padding: "0.25rem"
                   }}
+                  title="Remove attachment"
                 >
                   ×
                 </button>
@@ -1507,16 +1604,39 @@ export default function InboxPage() {
                 📎
                 <input
                   type="file"
-                  accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt"
+                  accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt,.vcf"
                   onChange={(e) => {
                     const file = e.target.files[0];
                     if (file) {
-                      // Basic validation
-                      const maxSize = 10 * 1024 * 1024; // 10MB
+                      // Validation based on file type
+                      const isImage = file.type.startsWith('image/');
+                      const isAudio = file.type.startsWith('audio/');
+                      const isVideo = file.type.startsWith('video/');
+                      const isDocument = file.type.includes('pdf') || file.type.includes('document') || file.type.includes('text');
+                      const isContact = file.name.toLowerCase().endsWith('.vcf');
+
+                      let maxSize = 1024 * 1024; // 1MB default
+
+                      if (isImage) {
+                        maxSize = 1024 * 1024; // 1MB for images (data URL limit)
+                      } else if (isAudio || isVideo) {
+                        maxSize = 5 * 1024 * 1024; // 5MB for media
+                      } else if (isDocument) {
+                        maxSize = 10 * 1024 * 1024; // 10MB for documents
+                      }
+
                       if (file.size > maxSize) {
-                        alert("File size must be less than 10MB");
+                        const sizeMB = (maxSize / (1024 * 1024)).toFixed(1);
+                        alert(`File size must be less than ${sizeMB}MB for ${isImage ? 'images' : isAudio || isVideo ? 'media files' : 'documents'}`);
                         return;
                       }
+
+                      // Only allow supported types for now
+                      if (!isImage && !isAudio && !isVideo && !isDocument && !isContact) {
+                        alert("Unsupported file type. Please use images, audio, video, documents, or contact files.");
+                        return;
+                      }
+
                       setSelectedMedia(file);
                     }
                   }}
@@ -1574,7 +1694,7 @@ export default function InboxPage() {
 
             {/* Emoji picker */}
             {showEmojiPicker && (
-              <div style={{
+              <div className="emoji-picker" style={{
                 position: "absolute",
                 bottom: "60px",
                 right: "20px",
