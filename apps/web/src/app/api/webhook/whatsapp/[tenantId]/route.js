@@ -128,10 +128,10 @@ export async function POST(request, { params }) {
     let ticketDocData = null;
 
     // Find existing open ticket for this customer
+    // Simplified query to avoid composite index requirement
     const existingTicketsSnap = await companyRef.collection('tickets')
       .where('customerId', '==', customerId)
-      .where('status', 'in', ['open', 'pending'])
-      .orderBy('createdAt', 'desc')
+      .where('status', '==', 'open')
       .limit(1)
       .get();
 
