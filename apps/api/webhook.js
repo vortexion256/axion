@@ -543,8 +543,8 @@ app.post("/webhook/whatsapp/:tenantId", async (req, res) => {
         aiShouldRespond = true; // Fallback to AI if respondent not found
       }
     } else {
-      console.log(`👨‍💼 Ticket assigned to Admin or no email - AI will respond`);
-      aiShouldRespond = true; // Admin tickets always get AI
+      console.log(`👨‍💼 Ticket assigned to Admin or no email - checking AI enabled setting: ${aiEnabled}`);
+      aiShouldRespond = aiEnabled; // Respect AI enabled setting even for Admin tickets
     }
 
     // If AI should not respond (assigned respondent is online), only store the user message
@@ -883,7 +883,7 @@ Continue the conversation with your next message.`;
             error: errorData
           });
 
-          console.log(`⚠️ Stored system error message for AI reply in conversation ${convId}: "${systemMessageBody}"`);
+          console.log(`⚠️ Stored system error message for AI reply in ticket ${ticketId}: "${systemMessageBody}"`);
         } catch (systemMsgErr) {
           console.error("❌ Failed to store system error message for AI reply:", systemMsgErr);
         }
@@ -930,12 +930,19 @@ app.get("/debug/respondents/:tenantId", async (req, res) => {
 // Agent send-message endpoint (used by Inbox UI to let a human reply)
 app.post("/agent/send-message", async (req, res) => {
   try {
+    console.log(`📨 Agent send-message request:`, req.body);
     const { convId, body, tenantId, userName, userEmail } = req.body || {};
 
     if (!convId || !body || !tenantId) {
       return res
         .status(400)
         .json({ error: "convId, body, and tenantId are required", received: req.body });
+    }
+
+    // Validate convId format
+    if (!convId.startsWith('ticket-')) {
+      console.error(`❌ Invalid ticket ID format: ${convId}`);
+      return res.status(400).json({ error: "Invalid ticket ID format" });
     }
 
     // Load company configuration
@@ -949,6 +956,7 @@ app.post("/agent/send-message", async (req, res) => {
 
     const company = companySnap.data();
 
+    console.log(`🔍 Looking for ticket: companies/${tenantId}/tickets/${convId}`);
     const ticketRef = db
       .collection("companies")
       .doc(tenantId)
@@ -957,8 +965,17 @@ app.post("/agent/send-message", async (req, res) => {
 
     const ticketSnap = await ticketRef.get();
     if (!ticketSnap.exists) {
-      return res.status(404).json({ error: "Ticket not found" });
+      console.error(`❌ Ticket not found: ${convId} in company ${tenantId}`);
+      console.error(`❌ Ticket ref path: companies/${tenantId}/tickets/${convId}`);
+      console.error(`❌ Available tickets in company (first 5):`, await db.collection("companies").doc(tenantId).collection("tickets").limit(5).get().then(snap => snap.docs.map(d => d.id)));
+      return res.status(404).json({
+        error: "Ticket not found",
+        ticketId: convId,
+        companyId: tenantId,
+        message: `No ticket found with ID '${convId}' in company '${tenantId}'`
+      });
     }
+    console.log(`✅ Found ticket: ${convId}`);
 
     const ticketData = ticketSnap.data() || {};
     const to = ticketData.customerId;

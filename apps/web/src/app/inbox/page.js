@@ -12,6 +12,7 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  getDoc,
   getDocs,
   where,
   limit,
@@ -425,6 +426,49 @@ export default function InboxPage() {
     e?.preventDefault();
     if (!selectedTicket || !agentMessage.trim()) return;
 
+    // Validate ticket still exists and user has access
+    try {
+      const ticketRef = doc(db, "companies", tenantId, "tickets", selectedTicket.id);
+      const ticketSnap = await getDoc(ticketRef);
+
+      if (!ticketSnap.exists()) {
+        console.error("❌ Ticket no longer exists:", selectedTicket.id);
+        alert("This conversation no longer exists. Please refresh the page.");
+        setSelectedTicket(null);
+        return;
+      }
+
+      const currentTicketData = ticketSnap.data();
+      console.log("✅ Ticket validation passed:", {
+        id: selectedTicket.id,
+        exists: true,
+        assignedTo: currentTicketData.assignedTo,
+        assignedEmail: currentTicketData.assignedEmail,
+        customerId: currentTicketData.customerId,
+        status: currentTicketData.status
+      });
+
+      // For respondents, check if they're still assigned
+      if (isRespondent && currentTicketData.assignedEmail !== user?.email) {
+        console.error("❌ Respondent no longer assigned to this ticket");
+        alert("You are no longer assigned to this conversation. Please refresh the page.");
+        setSelectedTicket(null);
+        return;
+      }
+
+      // Check if ticket is in a valid state for sending messages
+      if (currentTicketData.status === 'closed') {
+        console.error("❌ Cannot send message to closed ticket");
+        alert("This conversation is closed and cannot receive new messages.");
+        return;
+      }
+
+    } catch (validationError) {
+      console.error("❌ Error validating ticket:", validationError);
+      alert("Error validating conversation. Please try again.");
+      return;
+    }
+
     try {
       setIsSending(true);
       console.log("Sending to API:", `${apiBase}/agent/send-message`);
@@ -432,6 +476,12 @@ export default function InboxPage() {
         convId: selectedTicket.id,
         body: agentMessage.trim(),
         tenantId
+      });
+      console.log("Selected ticket details:", {
+        id: selectedTicket.id,
+        customerId: selectedTicket.customerId,
+        assignedTo: selectedTicket.assignedTo,
+        assignedEmail: selectedTicket.assignedEmail
       });
 
       const resp = await fetch(`${apiBase}/agent/send-message`, {
@@ -452,10 +502,28 @@ export default function InboxPage() {
 
       if (!resp.ok) {
         const errText = await resp.text();
-        console.error("Error sending agent message:", errText);
-        console.error("Response status:", resp.status);
-        alert("Failed to send message. Check API logs for details.");
+        console.error("❌ Error sending agent message:", errText);
+        console.error("❌ Response status:", resp.status);
+        console.error("❌ Full response headers:", Object.fromEntries(resp.headers.entries()));
+        console.error("❌ Request details:", {
+          url: `${apiBase}/agent/send-message`,
+          convId: selectedTicket.id,
+          tenantId,
+          agentMessage: agentMessage.trim()
+        });
+        console.error("❌ Selected ticket:", selectedTicket);
+
+        // Try to parse the error as JSON to see the structure
+        try {
+          const errorJson = JSON.parse(errText);
+          console.error("❌ Parsed error:", errorJson);
+        } catch (parseError) {
+          console.error("❌ Could not parse error as JSON:", parseError);
+        }
+
+        alert(`Failed to send message: ${errText}`);
       } else {
+        console.log("✅ Agent message sent successfully");
         setAgentMessage("");
       }
     } catch (err) {

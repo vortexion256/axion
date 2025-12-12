@@ -40,12 +40,12 @@ export default function DashboardPage() {
       if (!company?.id) return;
 
       try {
-        const conversationsRef = collection(db, 'companies', company.id, 'conversations');
-        const conversationsSnap = await getDocs(conversationsRef);
+        const ticketsRef = collection(db, 'companies', company.id, 'tickets');
+        const ticketsSnap = await getDocs(ticketsRef);
 
         let errorCount = 0;
-        for (const convDoc of conversationsSnap.docs) {
-          const messagesRef = collection(db, 'companies', company.id, 'conversations', convDoc.id, 'messages');
+        for (const ticketDoc of ticketsSnap.docs) {
+          const messagesRef = collection(db, 'companies', company.id, 'tickets', ticketDoc.id, 'messages');
           const errorQuery = query(messagesRef, where('error', '==', true));
           const errorSnap = await getDocs(errorQuery);
           if (!errorSnap.empty) {
