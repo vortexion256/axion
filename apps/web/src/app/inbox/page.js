@@ -39,6 +39,8 @@ export default function InboxPage() {
   const [loadingTimeout, setLoadingTimeout] = useState(false);
   const [expandedHistory, setExpandedHistory] = useState(new Set()); // Track which historical tickets are expanded
   const [showCumulativeHistory, setShowCumulativeHistory] = useState(false); // Toggle for cumulative view
+  const [selectedMedia, setSelectedMedia] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   // Request notification permission on mount
   useEffect(() => {
@@ -46,6 +48,107 @@ export default function InboxPage() {
       Notification.requestPermission();
     }
   }, []);
+
+  // Helper function to render message content with media support
+  const renderMessageContent = (msg) => {
+    const content = [];
+
+    // Add media attachments
+    if (msg.hasMedia && msg.media) {
+      msg.media.forEach((media, index) => {
+        const mediaType = media.contentType || '';
+        const isImage = mediaType.startsWith('image/');
+        const isAudio = mediaType.startsWith('audio/');
+        const isVideo = mediaType.startsWith('video/');
+
+        if (isImage) {
+          content.push(
+            <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
+              <img
+                src={media.url}
+                alt="Attachment"
+                style={{
+                  maxWidth: '200px',
+                  maxHeight: '200px',
+                  borderRadius: '8px',
+                  border: '1px solid #e0e0e0'
+                }}
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'block';
+                }}
+              />
+              <div style={{ display: 'none', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px', marginTop: '0.5rem' }}>
+                📎 Image attachment
+              </div>
+            </div>
+          );
+        } else if (isAudio) {
+          content.push(
+            <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
+              <audio controls style={{ maxWidth: '250px' }}>
+                <source src={media.url} type={mediaType} />
+                🎵 Audio message
+              </audio>
+            </div>
+          );
+        } else if (isVideo) {
+          content.push(
+            <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
+              <video controls style={{ maxWidth: '250px', borderRadius: '4px' }}>
+                <source src={media.url} type={mediaType} />
+                🎥 Video message
+              </video>
+            </div>
+          );
+        } else {
+          // Document or other file
+          content.push(
+            <div key={`media-${index}`} style={{
+              marginBottom: '0.5rem',
+              padding: '0.5rem',
+              backgroundColor: '#f0f8ff',
+              border: '1px solid #1976d2',
+              borderRadius: '4px',
+              display: 'inline-block'
+            }}>
+              📄 <a href={media.url} target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'none' }}>
+                {mediaType.split('/')[1]?.toUpperCase() || 'File'} Attachment
+              </a>
+            </div>
+          );
+        }
+      });
+    }
+
+    // Add text content
+    if (msg.body) {
+      content.push(
+        <div key="text" style={{
+          color: "#333",
+          lineHeight: "1.4",
+          wordWrap: "break-word"
+        }}>
+          {msg.body}
+        </div>
+      );
+    }
+
+    // Fallback for old messages without proper structure
+    if (content.length === 0) {
+      content.push(
+        <div key="fallback" style={{
+          color: "#333",
+          lineHeight: "1.4",
+          wordWrap: "break-word"
+        }}>
+          {msg.body || JSON.stringify(msg.payload)}
+        </div>
+      );
+    }
+
+    return content;
+  };
 
   // Loading timeout - show error if page doesn't load within 30 seconds
   useEffect(() => {
@@ -484,18 +587,33 @@ export default function InboxPage() {
         assignedEmail: selectedTicket.assignedEmail
       });
 
+      const requestData = {
+        convId: selectedTicket.id, // convId is actually ticketId in the new system
+        tenantId, // Pass tenant ID to API
+        userName: user?.displayName || user?.email?.split('@')[0] || 'Agent',
+        userEmail: user?.email,
+      };
+
+      // Add text content if provided
+      if (agentMessage.trim()) {
+        requestData.body = agentMessage.trim();
+      }
+
+      // Add media if selected
+      if (selectedMedia) {
+        // For now, we'll need to upload the file and get a URL
+        // This is a placeholder - we'll implement file upload next
+        console.log("📎 Media selected but upload not yet implemented:", selectedMedia);
+        // requestData.mediaUrl = uploadedMediaUrl;
+        // requestData.mediaType = selectedMedia.type;
+      }
+
       const resp = await fetch(`${apiBase}/agent/send-message`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          convId: selectedTicket.id, // convId is actually ticketId in the new system
-          body: agentMessage.trim(),
-          tenantId, // Pass tenant ID to API
-          userName: user?.displayName || user?.email?.split('@')[0] || 'Agent',
-          userEmail: user?.email,
-        }),
+        body: JSON.stringify(requestData),
       });
 
       console.log("Response status:", resp.status);
@@ -1110,13 +1228,7 @@ export default function InboxPage() {
                                 {msg.createdAt ? new Date(msg.createdAt.seconds * 1000).toLocaleString() : ""}
                               </span>
                             </div>
-                            <div style={{
-                              color: "#333",
-                              lineHeight: "1.4",
-                              wordWrap: "break-word"
-                            }}>
-                              {msg.body || JSON.stringify(msg.payload)}
-                            </div>
+                            {renderMessageContent(msg)}
                           </div>
                         ))
                       )}
@@ -1264,7 +1376,7 @@ export default function InboxPage() {
                                 lineHeight: "1.4",
                                 wordWrap: "break-word"
                               }}>
-                                {msg.body || JSON.stringify(msg.payload)}
+                                {renderMessageContent(msg)}
                               </div>
                             </div>
                           ))}
@@ -1350,43 +1462,155 @@ export default function InboxPage() {
         </div>
 
         {selectedTicket && (
-          <form
-            onSubmit={handleSendAgentMessage}
-            style={{
-              marginTop: "0.5rem",
-              display: "flex",
-              gap: "0.5rem",
-            }}
-          >
-            <input
-              type="text"
-              placeholder="Type a reply as agent..."
-              value={agentMessage}
-              onChange={(e) => setAgentMessage(e.target.value)}
-              style={{
-                flex: 1,
+          <div style={{ marginTop: "0.5rem" }}>
+            {/* Media preview */}
+            {selectedMedia && (
+              <div style={{
+                marginBottom: "0.5rem",
                 padding: "0.5rem",
+                backgroundColor: "#f0f8ff",
                 borderRadius: "4px",
-                border: "1px solid #ccc",
-              }}
-            />
-            <button
-              type="submit"
-              disabled={isSending || !agentMessage.trim()}
+                border: "1px solid #1976d2",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem"
+              }}>
+                <span>📎</span>
+                <span style={{ flex: 1, fontSize: "0.875rem" }}>
+                  {selectedMedia.name} ({(selectedMedia.size / 1024).toFixed(1)} KB)
+                </span>
+                <button
+                  onClick={() => setSelectedMedia(null)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#d32f2f",
+                    cursor: "pointer",
+                    fontSize: "1.2rem"
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+
+            <form
+              onSubmit={handleSendAgentMessage}
               style={{
-                padding: "0.5rem 1rem",
-                borderRadius: "4px",
-                border: "none",
-                backgroundColor: "#1976d2",
-                color: "white",
-                cursor:
-                  isSending || !agentMessage.trim() ? "not-allowed" : "pointer",
-                opacity: isSending || !agentMessage.trim() ? 0.7 : 1,
+                display: "flex",
+                gap: "0.5rem",
+                alignItems: "center",
               }}
             >
-              {isSending ? "Sending..." : "Send"}
-            </button>
-          </form>
+              {/* File input */}
+              <label style={{ cursor: "pointer", fontSize: "1.2rem" }}>
+                📎
+                <input
+                  type="file"
+                  accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt"
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      // Basic validation
+                      const maxSize = 10 * 1024 * 1024; // 10MB
+                      if (file.size > maxSize) {
+                        alert("File size must be less than 10MB");
+                        return;
+                      }
+                      setSelectedMedia(file);
+                    }
+                  }}
+                  style={{ display: "none" }}
+                />
+              </label>
+
+              {/* Emoji button */}
+              <button
+                type="button"
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                style={{
+                  fontSize: "1.2rem",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "0.25rem"
+                }}
+              >
+                😀
+              </button>
+
+              {/* Text input */}
+              <input
+                type="text"
+                placeholder="Type a reply as agent..."
+                value={agentMessage}
+                onChange={(e) => setAgentMessage(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                  border: "1px solid #ccc",
+                }}
+              />
+
+              {/* Send button */}
+              <button
+                type="submit"
+                disabled={isSending || (!agentMessage.trim() && !selectedMedia)}
+                style={{
+                  padding: "0.5rem 1rem",
+                  borderRadius: "4px",
+                  border: "none",
+                  backgroundColor: "#1976d2",
+                  color: "white",
+                  cursor:
+                    isSending || (!agentMessage.trim() && !selectedMedia) ? "not-allowed" : "pointer",
+                  opacity: isSending || (!agentMessage.trim() && !selectedMedia) ? 0.7 : 1,
+                }}
+              >
+                {isSending ? "Sending..." : "Send"}
+              </button>
+            </form>
+
+            {/* Emoji picker */}
+            {showEmojiPicker && (
+              <div style={{
+                position: "absolute",
+                bottom: "60px",
+                right: "20px",
+                backgroundColor: "white",
+                border: "1px solid #ccc",
+                borderRadius: "8px",
+                padding: "0.5rem",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                zIndex: 1000
+              }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "0.25rem" }}>
+                  {["😀", "😂", "❤️", "👍", "👋", "🎉", "🔥", "⭐", "✅", "❌", "📱", "💬", "📎", "🎵", "📹", "📄", "👤", "📍", "⏰", "💡", "🎯", "🚀", "💪", "🙏"].map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        setAgentMessage(prev => prev + emoji);
+                        setShowEmojiPicker(false);
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        fontSize: "1.5rem",
+                        cursor: "pointer",
+                        padding: "0.25rem",
+                        borderRadius: "4px"
+                      }}
+                      onMouseOver={(e) => e.target.style.backgroundColor = "#f0f0f0"}
+                      onMouseOut={(e) => e.target.style.backgroundColor = "transparent"}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

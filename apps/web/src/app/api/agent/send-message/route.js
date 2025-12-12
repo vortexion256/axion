@@ -53,10 +53,14 @@ export async function POST(request) {
     }
 
     const db = admin.firestore();
-    const { convId, body, tenantId, userName, userEmail } = await request.json();
+    const { convId, body, tenantId, userName, userEmail, mediaUrl, mediaType } = await request.json();
 
-    if (!convId || !body || !tenantId) {
-      return NextResponse.json({ error: "convId, body, and tenantId are required" }, { status: 400 });
+    if (!convId || !tenantId) {
+      return NextResponse.json({ error: "convId and tenantId are required" }, { status: 400 });
+    }
+
+    if (!body && !mediaUrl) {
+      return NextResponse.json({ error: "Either body text or mediaUrl is required" }, { status: 400 });
     }
 
     // Load company configuration
@@ -176,25 +180,50 @@ export async function POST(request) {
     const agentName = userName || "Agent";
     const agentInitials = getUserInitials(agentName);
     const showInitials = company.showUserInitials !== false; // Default true
-    const attributedBody = showInitials ? `${body}\n\n<${agentInitials}>` : body;
+    const attributedBody = body && showInitials ? `${body}\n\n<${agentInitials}>` : body;
+
+    const messageData = {
+      from: agentName,
+      role: "agent",
+      userEmail,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    // Add text content if provided
+    if (attributedBody) {
+      messageData.body = attributedBody;
+    }
+
+    // Add media information if provided
+    if (mediaUrl) {
+      messageData.media = [{
+        url: mediaUrl,
+        contentType: mediaType,
+        index: 0
+      }];
+      messageData.hasMedia = true;
+      console.log(`📎 Agent sending media: ${mediaUrl} (${mediaType})`);
+    }
 
     const agentMsgId = `agent-${Date.now()}`;
     const agentMsgRef = ticketRef.collection("messages").doc(agentMsgId);
-    await agentMsgRef.set({
-      from: agentName,
-      role: "agent",
-      body: attributedBody,
-      userEmail,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    await agentMsgRef.set(messageData);
 
     // 2️⃣ Update ticket updatedAt and lastMessage
     // Also turn off AI when respondent sends a message (they're actively handling)
-    await ticketRef.update({
-      lastMessage: body,
+    const updateData = {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       ...(shouldTurnOffAI && { aiEnabled: false }), // Turn off AI when respondent actively responds
-    });
+    };
+
+    // Set lastMessage to either text content or media description
+    if (body) {
+      updateData.lastMessage = body;
+    } else if (mediaUrl) {
+      updateData.lastMessage = mediaType ? `📎 ${mediaType.split('/')[0]} file` : '📎 Media file';
+    }
+
+    await ticketRef.update(updateData);
 
     if (shouldTurnOffAI) {
       console.log(`🤖 AI turned OFF for ticket ${convId} - respondent ${agentName} is actively responding`);
@@ -217,11 +246,26 @@ export async function POST(request) {
           ? company.twilioPhoneNumber
           : `whatsapp:${company.twilioPhoneNumber}`;
 
-        await companyTwilioClient.messages.create({
+        const messageParams = {
           from: fromWhatsApp,
           to: toWhatsApp,
-          body: attributedBody,
-        });
+        };
+
+        // Add text content if provided
+        if (attributedBody) {
+          messageParams.body = attributedBody;
+        }
+
+        // Add media if provided
+        if (mediaUrl) {
+          messageParams.mediaUrl = mediaUrl;
+          if (mediaType) {
+            // Twilio infers content type from URL, but we can log it
+            console.log(`📎 Sending media with type: ${mediaType}`);
+          }
+        }
+
+        await companyTwilioClient.messages.create(messageParams);
 
         console.log(
           `📤 Sent agent WhatsApp message to ${toWhatsApp}: "${body}"`

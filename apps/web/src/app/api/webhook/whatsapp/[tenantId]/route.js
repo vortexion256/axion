@@ -107,6 +107,25 @@ export async function POST(request, { params }) {
     const from = body.from || body.From;
     const id = body.id || body.MessageSid || body.SmsMessageSid;
 
+    // Handle media messages
+    const numMedia = parseInt(body.NumMedia || '0');
+    const mediaItems = [];
+
+    if (numMedia > 0) {
+      for (let i = 0; i < numMedia; i++) {
+        const mediaUrl = body[`MediaUrl${i}`];
+        const mediaContentType = body[`MediaContentType${i}`];
+
+        if (mediaUrl) {
+          mediaItems.push({
+            url: mediaUrl,
+            contentType: mediaContentType,
+            index: i
+          });
+        }
+      }
+    }
+
     if (!message || !from) {
       return NextResponse.json({ error: "Message and sender are required" }, { status: 400 });
     }
@@ -256,12 +275,21 @@ export async function POST(request, { params }) {
     const aiEnabled = ticketDocData.aiEnabled !== false; // treat missing as true
 
     // 2️⃣ Save incoming WhatsApp message in ticket's messages collection
-    const msgRef = companyRef.collection('tickets').doc(ticketId).collection("messages").doc(id);
-    await msgRef.set({
+    const messageData = {
       from,
       body: message,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    // Add media information if present
+    if (mediaItems.length > 0) {
+      messageData.media = mediaItems;
+      messageData.hasMedia = true;
+      console.log(`📎 Message contains ${mediaItems.length} media item(s):`, mediaItems);
+    }
+
+    const msgRef = companyRef.collection('tickets').doc(ticketId).collection("messages").doc(id);
+    await msgRef.set(messageData);
 
     // Check if assigned respondent is currently online or recently active - control AI accordingly
     let aiShouldRespond = aiEnabled;
