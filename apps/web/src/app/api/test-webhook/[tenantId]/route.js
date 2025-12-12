@@ -21,6 +21,17 @@ if (!admin.apps.length) {
   }
 }
 
+export async function GET(request, { params }) {
+  console.log("🔍 GET request to test-webhook - endpoint status check");
+  console.log("📍 Tenant ID:", params.tenantId);
+
+  return NextResponse.json({
+    status: "test webhook endpoint active",
+    tenantId: params.tenantId,
+    message: "This endpoint accepts POST requests for webhook testing"
+  });
+}
+
 export async function POST(request, { params }) {
   try {
     const tenantId = params.tenantId;

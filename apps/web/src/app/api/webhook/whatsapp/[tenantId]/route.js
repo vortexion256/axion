@@ -35,6 +35,18 @@ function getUserInitials(name) {
 
 // Note: Periodic cleanup removed for Vercel deployment
 // In serverless environments, use scheduled functions or external cron jobs
+
+export async function GET(request, { params }) {
+  console.log("🔍 GET request to webhook - likely a health check or browser access");
+  console.log("📍 Tenant ID:", params.tenantId);
+
+  return NextResponse.json({
+    status: "webhook endpoint active",
+    tenantId: params.tenantId,
+    message: "This endpoint accepts POST requests from Twilio WhatsApp webhooks"
+  });
+}
+
 export async function POST(request, { params }) {
   try {
     // Ensure Firebase Admin is initialized
