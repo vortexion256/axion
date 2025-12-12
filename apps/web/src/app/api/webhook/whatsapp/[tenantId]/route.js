@@ -149,7 +149,6 @@ export async function POST(request, { params }) {
       const customerHistorySnap = await companyRef.collection('tickets')
         .where('customerId', '==', customerId)
         .where('status', '==', 'closed')
-        .orderBy('createdAt', 'desc')
         .limit(3)
         .get();
 
