@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../lib/auth-context';
 
-export default function InvitePage() {
+function InvitePageContent() {
   const { user, loading, signInWithGoogle, acceptInvitation, getInvitationDetails } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -245,5 +245,23 @@ export default function InvitePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function InvitePage() {
+  return (
+    <Suspense fallback={
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        fontSize: '18px'
+      }}>
+        Loading invitation...
+      </div>
+    }>
+      <InvitePageContent />
+    </Suspense>
   );
 }
