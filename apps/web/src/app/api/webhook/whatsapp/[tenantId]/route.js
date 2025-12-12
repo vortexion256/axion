@@ -37,12 +37,14 @@ function getUserInitials(name) {
 // In serverless environments, use scheduled functions or external cron jobs
 
 export async function GET(request, { params }) {
+  // In Next.js App Router, params can be a Promise in some environments
+  const resolvedParams = await params;
   console.log("🔍 GET request to webhook - likely a health check or browser access");
-  console.log("📍 Tenant ID:", params.tenantId);
+  console.log("📍 Tenant ID:", resolvedParams.tenantId);
 
   return NextResponse.json({
     status: "webhook endpoint active",
-    tenantId: params.tenantId,
+    tenantId: resolvedParams.tenantId,
     message: "This endpoint accepts POST requests from Twilio WhatsApp webhooks"
   });
 }
@@ -68,17 +70,20 @@ export async function POST(request, { params }) {
     }
 
     const db = admin.firestore();
-    console.log("📋 Full params object:", params);
-    const tenantId = params.tenantId;
+
+    // In Next.js App Router, params can be a Promise in some environments
+    const resolvedParams = await params;
+    console.log("📋 Resolved params object:", resolvedParams);
+    const tenantId = resolvedParams.tenantId;
     console.log("🔔 Incoming /webhook/whatsapp request for tenant:", tenantId);
     console.log("🔗 Full URL:", request.url);
 
     if (!tenantId) {
       console.error("❌ No tenantId provided in URL");
-      console.error("❌ Params received:", JSON.stringify(params, null, 2));
+      console.error("❌ Resolved params:", JSON.stringify(resolvedParams, null, 2));
       return NextResponse.json({
         error: "Tenant ID is required",
-        receivedParams: params,
+        resolvedParams: resolvedParams,
         url: request.url
       }, { status: 400 });
     }

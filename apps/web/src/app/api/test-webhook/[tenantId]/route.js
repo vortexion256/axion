@@ -22,24 +22,32 @@ if (!admin.apps.length) {
 }
 
 export async function GET(request, { params }) {
+  // In Next.js App Router, params can be a Promise in some environments
+  const resolvedParams = await params;
   console.log("🔍 GET request to test-webhook - endpoint status check");
-  console.log("📍 Tenant ID:", params.tenantId);
+  console.log("📍 Tenant ID:", resolvedParams.tenantId);
 
   return NextResponse.json({
     status: "test webhook endpoint active",
-    tenantId: params.tenantId,
+    tenantId: resolvedParams.tenantId,
     message: "This endpoint accepts POST requests for webhook testing"
   });
 }
 
 export async function POST(request, { params }) {
   try {
-    const tenantId = params.tenantId;
+    // In Next.js App Router, params can be a Promise in some environments
+    const resolvedParams = await params;
+    const tenantId = resolvedParams.tenantId;
     console.log("🧪 Test webhook called for tenant:", tenantId);
 
     if (!tenantId) {
       console.error("❌ No tenantId provided in URL");
-      return NextResponse.json({ error: "Tenant ID is required" }, { status: 400 });
+      return NextResponse.json({
+        error: "Tenant ID is required",
+        resolvedParams: resolvedParams,
+        url: request.url
+      }, { status: 400 });
     }
 
     // Handle both JSON (for testing) and x-www-form-urlencoded (for Twilio)
