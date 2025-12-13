@@ -64,6 +64,8 @@ export default function InboxPage() {
   const handleMediaSelect = async (file) => {
     setSelectedMedia(file);
     setRecordedAudio(null); // Clear any recorded audio
+    setMediaRecorder(null);
+    setIsRecording(false);
 
     if (file.type.startsWith('image/')) {
       // Generate image preview
@@ -96,6 +98,10 @@ export default function InboxPage() {
 
   // Voice recording functions
   const startRecording = async () => {
+    // Clear any existing media selection before starting recording
+    setSelectedMedia(null);
+    setMediaPreview(null);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       // Try to use MP3 or OGG format if supported, fallback to WebM
@@ -830,7 +836,7 @@ export default function InboxPage() {
 
   async function handleSendAgentMessage(e) {
     e?.preventDefault();
-    if (!selectedTicket || !agentMessage.trim()) return;
+    if (!selectedTicket || (!agentMessage.trim() && !selectedMedia && !recordedAudio)) return;
 
     // Validate ticket still exists and user has access
     try {
@@ -1001,6 +1007,12 @@ export default function InboxPage() {
       } else {
         console.log("✅ Agent message sent successfully");
         setAgentMessage("");
+        // Clear media after successful send
+        setSelectedMedia(null);
+        setMediaPreview(null);
+        setRecordedAudio(null);
+        setIsRecording(false);
+        setMediaRecorder(null);
       }
     } catch (err) {
       console.error("Error sending agent message:", err);
