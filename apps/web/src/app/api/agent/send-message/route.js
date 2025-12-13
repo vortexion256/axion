@@ -273,7 +273,7 @@ export async function POST(request) {
               const buffer = Buffer.from(base64Data, 'base64');
 
               // Initialize Firebase Storage bucket
-              const bucketName = process.env.FIREBASE_STORAGE_BUCKET || `${process.env.FIREBASE_PROJECT_ID}.appspot.com`;
+              const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 'axion256system.firebasestorage.app';
               const bucket = getStorage().bucket(bucketName);
 
               // Generate unique filename

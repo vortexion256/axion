@@ -186,7 +186,7 @@ export async function POST(request, { params }) {
             // Upload to Firebase Storage and get public URL
             try {
               // Initialize Firebase Storage bucket
-              const bucketName = process.env.FIREBASE_STORAGE_BUCKET || `${process.env.FIREBASE_PROJECT_ID}.appspot.com`;
+              const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 'axion256system.firebasestorage.app';
               const bucket = admin.storage().bucket(bucketName);
 
               // Generate unique filename
