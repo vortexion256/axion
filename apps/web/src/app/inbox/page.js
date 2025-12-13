@@ -40,6 +40,7 @@ export default function InboxPage() {
   const [loadingTimeout, setLoadingTimeout] = useState(false);
   const [expandedHistory, setExpandedHistory] = useState(new Set()); // Track which historical tickets are expanded
   const [showCumulativeHistory, setShowCumulativeHistory] = useState(false); // Toggle for cumulative view
+  const [showHistorySection, setShowHistorySection] = useState(true); // Toggle for showing history section
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -1469,8 +1470,37 @@ export default function InboxPage() {
             )}
           </div>
 
-          {/* Customer History Section */}
+          {/* History Section Toggle */}
           {customerHistory.length > 0 && (
+            <div style={{
+              display: "flex",
+              justifyContent: "center",
+              marginBottom: "1rem"
+            }}>
+              <button
+                onClick={() => setShowHistorySection(!showHistorySection)}
+                style={{
+                  fontSize: "0.8rem",
+                  padding: "0.4rem 0.8rem",
+                  borderRadius: "6px",
+                  border: "1px solid #ddd",
+                  backgroundColor: showHistorySection ? "#f44336" : "#4caf50",
+                  color: "white",
+                  cursor: "pointer",
+                  fontWeight: "500",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.3rem"
+                }}
+                title={showHistorySection ? "Hide previous conversations" : "Show previous conversations"}
+              >
+                {showHistorySection ? "👁️ Hide History" : "📚 Show History"}
+              </button>
+            </div>
+          )}
+
+          {/* Customer History Section */}
+          {customerHistory.length > 0 && showHistorySection && (
             <div style={{
               backgroundColor: "#f5f5f5",
               borderRadius: "8px",
