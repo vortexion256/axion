@@ -54,9 +54,16 @@ In your Firebase Firestore, update your company document with:
 
 ### Required for Vercel:
 - `FIREBASE_SERVICE_ACCOUNT_KEY` - Full JSON service account key
+- `TWILIO_ACCOUNT_SID` - Your Twilio Account SID
+- `TWILIO_AUTH_TOKEN` - Your Twilio Auth Token
 
 ### Optional:
 - `NEXT_PUBLIC_API_BASE_URL` - Only needed if using external API (not for Vercel)
+
+**Get Twilio Credentials:**
+1. Go to [Twilio Console](https://console.twilio.com)
+2. Navigate to **Account** → **API Keys & Tokens**
+3. Copy your **Account SID** and **Auth Token**
 
 ## Troubleshooting
 
@@ -80,3 +87,8 @@ In your Firebase Firestore, update your company document with:
 - Check that `geminiApiKey` is set in company settings
 - Verify Twilio credentials are correct
 - Check Vercel function logs for API errors
+
+### WhatsApp Media Not Displaying
+- Ensure `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` are set in Vercel environment variables
+- Check Vercel logs for "Twilio credentials not available for media download" errors
+- Media download requires Twilio authentication to access private URLs
