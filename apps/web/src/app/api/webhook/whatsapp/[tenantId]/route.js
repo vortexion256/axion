@@ -204,8 +204,8 @@ export async function POST(request, { params }) {
                 public: true, // Make file publicly accessible
               });
 
-              // Get public URL
-              const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+              // Get public URL (Firebase Storage format)
+              const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filename)}?alt=media`;
               console.log(`✅ Uploaded incoming media to Firebase: ${publicUrl}`);
 
               mediaItems.push({
