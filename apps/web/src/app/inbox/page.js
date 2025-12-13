@@ -105,16 +105,14 @@ export default function InboxPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Prioritize WhatsApp-compatible formats: OGG/Opus first (most reliable), then MP3, then WebM - avoid MP4/WAV
+      // Prioritize WhatsApp-compatible formats: MP3 first (most compatible), then OGG/Opus, then OGG - avoid WebM/MP4/WAV
       let mimeType = '';
       const supportedFormats = [
+        'audio/mp3',              // WhatsApp most compatible
+        'audio/mpeg',             // WhatsApp compatible
         'audio/ogg;codecs=opus',  // WhatsApp preferred
         'audio/ogg',              // WhatsApp compatible
-        'audio/mp3',              // WhatsApp compatible
-        'audio/mpeg',             // WhatsApp compatible
-        'audio/wav',              // May not work well
-        'audio/webm;codecs=opus', // Fallback
-        'audio/webm'              // Fallback
+        'audio/wav'               // May not work well
       ];
 
       for (const format of supportedFormats) {
@@ -150,7 +148,8 @@ export default function InboxPage() {
           name: audioFile.name,
           sizeMB: (audioFile.size / (1024 * 1024)).toFixed(2),
           mimeType: mimeType,
-          extension: extension
+          extension: extension,
+          whatsAppCompatible: ['audio/mp3', 'audio/mpeg', 'audio/ogg'].some(format => mimeType.startsWith(format))
         });
 
         // Check size limit for audio (5MB max)
