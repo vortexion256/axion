@@ -1583,6 +1583,8 @@ export default function InboxPage() {
                           </div>
                         ))
                       )}
+                );
+              })}
                   </div>
                 </div>
               ) : (
@@ -1786,7 +1788,9 @@ export default function InboxPage() {
                   </div>
                 </div>
               )}
-              {messages.map((msg) => (
+              {messages.map((msg) => {
+                console.log('🎯 Rendering message:', msg.id, 'hasMedia:', msg.hasMedia, 'media:', msg.media, 'body:', msg.body);
+                return (
                 <div key={msg.id} style={{
                   marginBottom: "0.5rem",
                   padding: msg.error ? "0.75rem" : "0.25rem",
