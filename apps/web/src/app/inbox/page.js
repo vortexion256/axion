@@ -1704,7 +1704,7 @@ export default function InboxPage() {
       >
         {/* Mobile Header */}
         {isMobile && (
-          <div style={{
+              <div style={{
             backgroundColor: "#ffffff",
             borderBottom: "1px solid #e5e5ea",
             padding: "0.75rem 1rem",
@@ -1735,7 +1735,7 @@ export default function InboxPage() {
               flex: 1
             }}>
               {selectedTicket ? `Chat with ${selectedTicket.customerId?.split('@')[0] || 'Customer'}` : 'Inbox'}
-            </div>
+                  </div>
             {/* History toggle button for mobile */}
             {selectedTicket && (
               <button
@@ -1755,9 +1755,9 @@ export default function InboxPage() {
               >
                 <span style={{ fontSize: "1.25rem" }}>📚</span>
               </button>
+                )}
+              </div>
             )}
-          </div>
-        )}
 
         {/* Desktop Header */}
         {!isMobile && selectedTicket && (
@@ -1785,8 +1785,8 @@ export default function InboxPage() {
           height: isMobile && showHistorySection ? "100vh" : "auto"
         }}>
 
-          {/* History Section Toggle */}
-          {customerHistory.length > 0 && (
+          {/* History Section Toggle - Only show on desktop */}
+          {customerHistory.length > 0 && !isMobile && (
             <div style={{
               display: "flex",
               justifyContent: "center",
@@ -1811,7 +1811,7 @@ export default function InboxPage() {
               >
                 {showHistorySection ? "👁️ Hide History" : "📚 Show History"}
               </button>
-          </div>
+            </div>
           )}
 
           {/* Customer History Section */}
@@ -2116,7 +2116,7 @@ export default function InboxPage() {
         >
           {selectedTicket ? (
             <div>
-              {customerHistory.length > 0 && messages.length > 0 && (
+              {customerHistory.length > 0 && messages.length > 0 && (!isMobile || showHistorySection) && (
                 <div style={{
                   backgroundColor: "#e3f2fd",
                   border: "1px solid #2196f3",
@@ -2132,7 +2132,7 @@ export default function InboxPage() {
                   </div>
                   <div style={{ fontSize: "0.8rem", color: "#666" }}>
                     {selectedTicket?.createdAt ? new Date(selectedTicket.createdAt.seconds * 1000).toLocaleString() : ''}
-                    {selectedTicket?.customerId && (
+                    {selectedTicket?.customerId && (!isMobile || showHistorySection) && (
                       <span> • Previous conversations available above</span>
                     )}
                   </div>
