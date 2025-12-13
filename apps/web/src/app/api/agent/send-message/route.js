@@ -353,7 +353,7 @@ export async function POST(request) {
         }
 
         console.log(
-          `📤 Sent agent WhatsApp message to ${toWhatsApp}: "${messageParams.body ? messageParams.body : '[Media only]'}"`
+          `📤 Sent agent WhatsApp message to ${toWhatsApp}: "${messageParams.body || '[Media only]'}"`
         );
       } catch (twilioErr) {
         console.error(
