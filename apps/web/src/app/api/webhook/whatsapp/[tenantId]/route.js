@@ -123,22 +123,25 @@ export async function POST(request, { params }) {
             console.log(`⬇️ Downloading media ${i + 1}/${numMedia} from Twilio...`);
 
             // Download media using company-specific Twilio authentication
-            const twilioSid = company.twilioAccountSid;
-            const twilioToken = company.twilioAuthToken;
+            const companyTwilioSid = company.twilioAccountSid;
+            const companyTwilioToken = company.twilioAuthToken;
 
-            if (!twilioSid || !twilioToken) {
+            if (!companyTwilioSid || !companyTwilioToken) {
               console.error(`❌ Twilio credentials not configured for company ${tenantId}`);
               // Don't store media if we can't download it
               console.warn(`⚠️ Skipping media ${i + 1} - credentials required for download`);
               continue;
             }
 
-            const auth = Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64');
+            const authString = `${companyTwilioSid}:${companyTwilioToken}`;
+            const authBase64 = Buffer.from(authString).toString('base64');
+
+            const requestHeaders = {
+              'Authorization': `Basic ${authBase64}`
+            };
 
             const mediaResponse = await axios.get(mediaUrl, {
-              headers: {
-                'Authorization': `Basic ${auth}`
-              },
+              headers: requestHeaders,
               responseType: 'arraybuffer',
               timeout: 30000, // 30 second timeout
               maxContentLength: 10 * 1024 * 1024 // 10MB limit
@@ -171,15 +174,11 @@ export async function POST(request, { params }) {
               index: i
             });
 
-          } catch (error) {
-            console.error(`❌ Failed to download media ${i + 1}:`, error.message);
-            // Still store the URL as fallback, though it won't work for display
-            mediaItems.push({
-              url: mediaUrl,
-              contentType: mediaContentType,
-              error: 'Download failed',
-              index: i
-            });
+          } catch (downloadError) {
+            console.error(`❌ Failed to download media ${i + 1}:`, downloadError.message);
+            console.error('Full error:', downloadError);
+            // Don't store media if download fails
+            continue;
           }
         }
       }
