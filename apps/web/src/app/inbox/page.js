@@ -104,9 +104,10 @@ export default function InboxPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Try to use MP3 or OGG format if supported, fallback to WebM
-      const mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' :
+      // Prioritize OGG (WhatsApp compatible), then MP4, then WebM
+      const mimeType = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' :
                       MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' :
+                      MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' :
                       MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
 
       if (!mimeType) {
@@ -122,8 +123,16 @@ export default function InboxPage() {
         const blob = new Blob(chunks, { type: mimeType });
         const url = URL.createObjectURL(blob);
         const extension = mimeType.includes('mp4') ? 'm4a' :
-                         mimeType.includes('ogg') ? 'ogg' : 'webm';
+                         mimeType.includes('ogg') ? 'ogg' :
+                         mimeType.includes('webm') ? 'webm' : 'audio';
         const audioFile = new File([blob], `voice-note.${extension}`, { type: mimeType });
+
+        console.log("🎵 Audio recorded:", {
+          size: audioFile.size,
+          type: audioFile.type,
+          name: audioFile.name,
+          sizeMB: (audioFile.size / (1024 * 1024)).toFixed(2)
+        });
 
         setRecordedAudio(audioFile);
         setSelectedMedia(audioFile);
@@ -910,6 +919,12 @@ export default function InboxPage() {
 
       // Add media if selected
       if (selectedMedia) {
+        console.log("🎵 Preparing to send media:", {
+          type: selectedMedia.type,
+          size: selectedMedia.size,
+          name: selectedMedia.name,
+          hasRecordedAudio: !!recordedAudio
+        });
         try {
           // For images smaller than 1MB, convert to data URL
           if (selectedMedia.type.startsWith('image/') && selectedMedia.size <= 1024 * 1024) {
@@ -2190,7 +2205,7 @@ export default function InboxPage() {
               {/* Send button */}
               <button
                 type="submit"
-                disabled={isSending || (!agentMessage.trim() && !selectedMedia) || isRecording}
+                disabled={isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording}
                 style={{
                   padding: "0.5rem 1rem",
                   borderRadius: "4px",
