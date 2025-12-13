@@ -272,8 +272,9 @@ export async function POST(request) {
               const mimeType = mimeInfo.split(':')[1].split(';')[0];
               const buffer = Buffer.from(base64Data, 'base64');
 
-              // Initialize Firebase Storage
-              const bucket = getStorage().bucket();
+              // Initialize Firebase Storage bucket
+              const bucketName = process.env.FIREBASE_STORAGE_BUCKET || `${process.env.FIREBASE_PROJECT_ID}.appspot.com`;
+              const bucket = getStorage().bucket(bucketName);
 
               // Generate unique filename
               const timestamp = Date.now();

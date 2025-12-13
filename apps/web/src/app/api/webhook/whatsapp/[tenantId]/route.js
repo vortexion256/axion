@@ -111,6 +111,27 @@ export async function POST(request, { params }) {
     const numMedia = parseInt(body.NumMedia || '0');
     const mediaItems = [];
 
+    if (!from) {
+      return NextResponse.json({ error: "Sender is required" }, { status: 400 });
+    }
+
+    // Allow messages with either text content or media
+    if (!message && numMedia === 0) {
+      return NextResponse.json({ error: "Message must contain either text or media" }, { status: 400 });
+    }
+
+    // Load company configuration
+    const companyRef = db.collection("companies").doc(tenantId);
+    const companySnap = await companyRef.get();
+
+    if (!companySnap.exists) {
+      console.warn(`⚠️ Company ${tenantId} not found`);
+      return NextResponse.json({ error: "Company not found" }, { status: 404 });
+    }
+
+    const company = companySnap.data();
+
+    // Process media messages now that we have company configuration
     if (numMedia > 0) {
       console.log(`📥 Processing ${numMedia} media items...`);
 
@@ -189,26 +210,6 @@ export async function POST(request, { params }) {
         console.log(`📦 Processed ${mediaItems.length} media items successfully`);
       }
     }
-
-    if (!from) {
-      return NextResponse.json({ error: "Sender is required" }, { status: 400 });
-    }
-
-    // Allow messages with either text content or media
-    if (!message && numMedia === 0) {
-      return NextResponse.json({ error: "Message must contain either text or media" }, { status: 400 });
-    }
-
-    // Load company configuration
-    const companyRef = db.collection("companies").doc(tenantId);
-    const companySnap = await companyRef.get();
-
-    if (!companySnap.exists) {
-      console.warn(`⚠️ Company ${tenantId} not found`);
-      return NextResponse.json({ error: "Company not found" }, { status: 404 });
-    }
-
-    const company = companySnap.data();
 
     // 1️⃣ Check if customer exists, create if not
     const customerId = from.replace("whatsapp:", "");
