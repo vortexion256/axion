@@ -61,6 +61,33 @@ export default function InboxPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showEmojiPicker]);
 
+  // Add CSS animations for mobile experience
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+      }
+
+      @keyframes slideIn {
+        from { transform: translateY(20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+
+      .message-bubble {
+        animation: slideIn 0.3s ease-out;
+      }
+
+      .recording-pulse {
+        animation: pulse 1s infinite;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
   // Handle media file selection and preview generation
   const handleMediaSelect = async (file) => {
     setSelectedMedia(file);
@@ -1278,80 +1305,139 @@ export default function InboxPage() {
     );
   }
 
+  // Mobile responsiveness
+  const [isMobile, setIsMobile] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+      if (window.innerWidth > 768) {
+        setSidebarOpen(true); // Always open on desktop
+      } else {
+        setSidebarOpen(false); // Closed by default on mobile
+      }
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
-    <div style={{ display: "flex", height: "100vh" }}>
+    <div style={{
+      display: "flex",
+      height: "100vh",
+      backgroundColor: "#f2f2f7",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      overflow: "hidden"
+    }}>
+      {/* Mobile Overlay */}
+      {isMobile && sidebarOpen && (
       <div
         style={{
-          width: "320px",
-          borderRight: "1px solid #ccc",
-          padding: "1rem",
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.3)",
+            zIndex: 998,
+          }}
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div
+        style={{
+          width: isMobile ? "280px" : "320px",
+          borderRight: "1px solid #e5e5ea",
+          backgroundColor: "#ffffff",
           display: "flex",
           flexDirection: "column",
+          position: isMobile ? "fixed" : "relative",
+          top: 0,
+          left: isMobile ? (sidebarOpen ? 0 : "-280px") : 0,
+          height: "100vh",
+          zIndex: 999,
+          transition: isMobile ? "left 0.3s ease" : "none",
+          boxShadow: isMobile && sidebarOpen ? "2px 0 8px rgba(0,0,0,0.1)" : "none",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-            <h2>Tickets</h2>
-            <span style={{ fontSize: "0.8rem", color: "#666" }}>
-              ({tickets.length} total)
-            </span>
+        {/* Sidebar Header */}
+        <div style={{
+          padding: "1rem",
+          borderBottom: "1px solid #e5e5ea",
+          backgroundColor: "#f9f9f9",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <div style={{
+              fontSize: "1.25rem",
+              fontWeight: "600",
+              color: "#1d1d1f",
+              letterSpacing: "-0.025em"
+            }}>
+              Tickets
+            </div>
+            <div style={{
+              backgroundColor: "#007aff",
+              color: "white",
+              padding: "0.125rem 0.5rem",
+              borderRadius: "10px",
+              fontSize: "0.75rem",
+              fontWeight: "500"
+            }}>
+              {tickets.length}
+            </div>
           </div>
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             {isRespondent && (
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span style={{ fontSize: "0.8rem", color: "#666" }}>Status:</span>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button
                     onClick={() => {
                       const newOnlineStatus = !isOnline;
-                      const wasPreviouslyOffline = !isOnline && newOnlineStatus; // Coming online from offline
+                      const wasPreviouslyOffline = !isOnline && newOnlineStatus;
                       setIsOnline(newOnlineStatus);
                       updateRespondentStatus(newOnlineStatus, wasPreviouslyOffline);
                     }}
                     style={{
-                      backgroundColor: isOnline ? "#4caf50" : "#f44336",
+                      backgroundColor: isOnline ? "#34c759" : "#ff3b30",
                       color: "white",
                       border: "none",
-                      padding: "0.25rem 0.75rem",
-                      borderRadius: "15px",
-                      fontSize: "0.7rem",
+                      padding: "0.375rem 0.875rem",
+                      borderRadius: "18px",
+                      fontSize: "0.8125rem",
+                      fontWeight: "500",
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      gap: "0.25rem",
-                      transition: "all 0.2s"
+                      gap: "0.375rem",
+                      transition: "all 0.2s ease",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                      minWidth: "70px",
+                      justifyContent: "center"
                     }}
                     title={isOnline ? "Click to go offline" : "Click to go online"}
                   >
-                    <span style={{ fontSize: "0.6rem" }}>{isOnline ? "●" : "○"}</span>
+                    <div style={{
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      backgroundColor: "white",
+                      opacity: 0.8
+                    }} />
                     {isOnline ? "Online" : "Offline"}
-                  </button>
-                  <button
-                    onClick={() => {
-                      console.log('Manually setting online...');
-                      const wasPreviouslyOffline = !isOnline;
-                      updateRespondentStatus(true, wasPreviouslyOffline);
-                      setIsOnline(true);
-                    }}
-                    style={{
-                      backgroundColor: "#2196f3",
-                      color: "white",
-                      border: "none",
-                      padding: "0.25rem 0.5rem",
-                      borderRadius: "4px",
-                      fontSize: "0.6rem",
-                      cursor: "pointer"
-                    }}
-                    title="Force online status update"
-                  >
-                    🔄 Force Online
                   </button>
                 </div>
               </div>
             )}
             {isAdmin && (
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span style={{ fontSize: "0.8rem", color: "#666" }}>Admin Status:</span>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button
                     onClick={() => {
@@ -1359,73 +1445,73 @@ export default function InboxPage() {
                       updateAdminStatus(newStatus);
                     }}
                     style={{
-                      backgroundColor: company?.adminOnline ? "#4caf50" : "#f44336",
+                      backgroundColor: company?.adminOnline ? "#34c759" : "#ff3b30",
                       color: "white",
                       border: "none",
-                      padding: "0.25rem 0.75rem",
-                      borderRadius: "15px",
-                      fontSize: "0.7rem",
+                      padding: "0.375rem 0.875rem",
+                      borderRadius: "18px",
+                      fontSize: "0.8125rem",
+                      fontWeight: "500",
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      gap: "0.25rem",
-                      transition: "all 0.2s"
+                      gap: "0.375rem",
+                      transition: "all 0.2s ease",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                      minWidth: "70px",
+                      justifyContent: "center"
                     }}
                     title={company?.adminOnline ? "Click to go offline - tickets will be assigned to offline respondents" : "Click to go online - tickets will be assigned to you when respondents are offline"}
                   >
-                    <span style={{ fontSize: "0.6rem" }}>{company?.adminOnline ? "●" : "○"}</span>
+                    <div style={{
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      backgroundColor: "white",
+                      opacity: 0.8
+                    }} />
                     {company?.adminOnline ? "Online" : "Offline"}
                   </button>
-                  <span style={{ fontSize: "0.7rem", color: "#666" }}>
-                    {company?.adminOnline ? "🤖 Auto AI enabled" : "Respondents handle tickets"}
-                  </span>
                 </div>
               </div>
             )}
+
+            {/* Notification Button */}
             {'Notification' in window && Notification.permission === 'default' && (
               <button
                 onClick={() => Notification.requestPermission()}
                 style={{
-                  backgroundColor: "#2196f3",
+                  backgroundColor: "#007aff",
                   color: "white",
                   border: "none",
-                  padding: "0.25rem 0.5rem",
-                  borderRadius: "4px",
-                  fontSize: "0.7rem",
-                  cursor: "pointer"
+                  padding: "0.375rem 0.75rem",
+                  borderRadius: "18px",
+                  fontSize: "0.8125rem",
+                  fontWeight: "500",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.25rem",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
                 }}
                 title="Enable notifications for new assignments"
               >
-                🔔 Enable
+                🔔
               </button>
             )}
-            {isAdmin && (
-              <button
-                onClick={() => setDebugMode(!debugMode)}
-                style={{
-                  backgroundColor: debugMode ? "#ff9800" : "#666",
-                  color: "white",
-                  border: "none",
-                  padding: "0.25rem 0.5rem",
-                  borderRadius: "4px",
-                  fontSize: "0.7rem",
-                  cursor: "pointer"
-                }}
-                title={debugMode ? "Exit debug mode" : "Enter debug mode (see all conversations)"}
-              >
-                {debugMode ? "🐛 Debug" : "🔍 Debug"}
-              </button>
-            )}
+
+            {/* New Assignments Badge */}
             {newAssignments.size > 0 && (
               <div style={{
-                backgroundColor: "#4caf50",
+                backgroundColor: "#ff3b30",
                 color: "white",
-                padding: "0.25rem 0.5rem",
+                padding: "0.125rem 0.5rem",
                 borderRadius: "10px",
                 fontSize: "0.75rem",
-                fontWeight: "bold"
+                fontWeight: "600",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
               }}>
-                {newAssignments.size} New
+                {newAssignments.size}
               </div>
             )}
           </div>
@@ -1435,12 +1521,15 @@ export default function InboxPage() {
             <div
               key={ticket.id}
               style={{
-                padding: "0.5rem",
+                padding: isMobile ? "1rem" : "0.75rem",
                 cursor: "pointer",
-                backgroundColor: selectedTicket?.id === ticket.id ? "#e0f7fa" : "",
-                borderRadius: "4px",
-                marginBottom: "0.25rem",
-                border: ticket.hasErrors ? "2px solid #f44336" : "1px solid transparent",
+                backgroundColor: selectedTicket?.id === ticket.id ? "#007aff" : "#ffffff",
+                color: selectedTicket?.id === ticket.id ? "white" : "#1d1d1f",
+                borderRadius: "12px",
+                marginBottom: "0.5rem",
+                border: ticket.hasErrors ? "2px solid #ff3b30" : "1px solid #e5e5ea",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                transition: "all 0.2s ease"
               }}
               onClick={() => {
                 setSelectedTicket(ticket);
@@ -1603,35 +1692,77 @@ export default function InboxPage() {
         )}
       </div>
 
+      {/* Main Chat Area */}
       <div
         style={{
           flex: 1,
-          padding: "1rem",
           display: "flex",
           flexDirection: "column",
+          backgroundColor: "#f2f2f7",
+          position: "relative"
         }}
       >
-        <div style={{ marginBottom: "1rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-            <h2>Messages</h2>
-            {selectedTicket && (
+        {/* Mobile Header */}
+        {isMobile && (
               <div style={{
-                fontSize: "0.8rem",
-                color: "#666",
-                backgroundColor: "#f8f9fa",
-                padding: "0.5rem 0.75rem",
-                borderRadius: "6px",
-                border: "1px solid #e9ecef"
-              }}>
-                <strong>Customer:</strong> {selectedTicket?.customerId || 'Unknown'}
-                {selectedTicket?.customerHistorySummary && (
-                  <div style={{ marginTop: "0.25rem", fontSize: "0.75rem", color: "#495057" }}>
-                    {selectedTicket.customerHistorySummary}
+            backgroundColor: "#ffffff",
+            borderBottom: "1px solid #e5e5ea",
+            padding: "0.75rem 1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+          }}>
+            <button
+              onClick={() => setSidebarOpen(true)}
+              style={{
+                backgroundColor: "transparent",
+                border: "none",
+                padding: "0.5rem",
+                borderRadius: "50%",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              <span style={{ fontSize: "1.25rem" }}>☰</span>
+            </button>
+            <div style={{
+              fontSize: "1.125rem",
+              fontWeight: "600",
+              color: "#1d1d1f",
+              flex: 1
+            }}>
+              {selectedTicket ? `Chat with ${selectedTicket.customerId?.split('@')[0] || 'Customer'}` : 'Inbox'}
+            </div>
                   </div>
                 )}
+
+        {/* Desktop Header */}
+        {!isMobile && selectedTicket && (
+          <div style={{
+            backgroundColor: "#ffffff",
+            borderBottom: "1px solid #e5e5ea",
+            padding: "1rem",
+            fontSize: "1.25rem",
+            fontWeight: "600",
+            color: "#1d1d1f",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+          }}>
+            Chat with {selectedTicket.customerId?.split('@')[0] || 'Customer'}
               </div>
             )}
-          </div>
+
+        {/* Messages Area */}
+        <div style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: isMobile ? "1rem 0.5rem" : "1rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.5rem"
+        }}>
 
           {/* History Section Toggle */}
           {customerHistory.length > 0 && (
@@ -1659,7 +1790,7 @@ export default function InboxPage() {
               >
                 {showHistorySection ? "👁️ Hide History" : "📚 Show History"}
               </button>
-            </div>
+          </div>
           )}
 
           {/* Customer History Section */}
@@ -1987,26 +2118,109 @@ export default function InboxPage() {
               )}
               {messages.map((msg) => {
                 console.log('🎯 Rendering message:', msg.id, 'hasMedia:', msg.hasMedia, 'media:', msg.media, 'body:', msg.body);
+                const isAgentMessage = msg.role === 'agent';
+                const isSystemMessage = msg.from === "System";
+                const hasContent = msg.body || msg.hasMedia;
+
+                if (!hasContent) return null;
+
                 return (
                 <div key={msg.id} style={{
-                  marginBottom: "0.5rem",
-                  padding: msg.error ? "0.75rem" : "0.25rem",
-                  borderRadius: "4px",
-                  backgroundColor: msg.error ? "#ffeaea" : "transparent",
-                  border: msg.error ? "1px solid #f44336" : "none",
-                  color: msg.error ? "#d32f2f" : "inherit"
-                }}>
-                  <strong style={{ color: msg.from === "System" ? "#ff9800" : "inherit" }}>
+                    display: "flex",
+                    marginBottom: "0.75rem",
+                    justifyContent: isAgentMessage ? "flex-end" : "flex-start",
+                    alignItems: "flex-end",
+                    gap: "0.5rem"
+                  }}>
+                    {/* Avatar for customer messages */}
+                    {!isAgentMessage && !isSystemMessage && (
+                      <div style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "50%",
+                        backgroundColor: "#007aff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "white",
+                        fontSize: "0.875rem",
+                        fontWeight: "600",
+                        flexShrink: 0
+                      }}>
+                        {(selectedTicket?.customerId?.split('@')[0]?.charAt(0) || 'C').toUpperCase()}
+                      </div>
+                    )}
+
+                    {/* Message Bubble */}
+                    <div style={{
+                      maxWidth: isMobile ? "280px" : "400px",
+                      backgroundColor: isAgentMessage ? "#007aff" : isSystemMessage ? "#e5e5ea" : "#ffffff",
+                      color: isAgentMessage ? "white" : "#1d1d1f",
+                      padding: "0.75rem",
+                      borderRadius: isAgentMessage ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                      position: "relative",
+                      wordWrap: "break-word",
+                      animation: "slideIn 0.3s ease-out"
+                    }}>
+                      {/* Sender name for system messages */}
+                      {isSystemMessage && (
+                        <div style={{
+                          fontSize: "0.8125rem",
+                          fontWeight: "600",
+                          color: "#666",
+                          marginBottom: "0.25rem"
+                        }}>
                     {msg.from}
-                  </strong>:{" "}
-                  {msg.body || JSON.stringify(msg.payload)}
+                        </div>
+                      )}
+
+                      {/* Message content */}
+                      {msg.body && (
+                        <div style={{
+                          fontSize: "1rem",
+                          lineHeight: "1.4",
+                          marginBottom: msg.hasMedia ? "0.5rem" : 0
+                        }}>
+                          {msg.body}
+                        </div>
+                      )}
+
+                      {/* Media content */}
+                      {renderMessageContent(msg)}
+
+                      {/* Error indicator */}
                   {msg.errorCode && (
-                    <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", color: "#666" }}>
-                      Error Code: {msg.errorCode}
+                        <div style={{
+                          fontSize: "0.75rem",
+                          marginTop: "0.25rem",
+                          color: "#ff3b30",
+                          opacity: 0.8
+                        }}>
+                          Error: {msg.errorCode}
                     </div>
                   )}
-                    {renderMessageContent(msg)}
                 </div>
+
+                    {/* Avatar for agent messages */}
+                    {isAgentMessage && (
+                      <div style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "50%",
+                        backgroundColor: "#34c759",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "white",
+                        fontSize: "0.875rem",
+                        fontWeight: "600",
+                        flexShrink: 0
+                      }}>
+                        {(user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'A').toUpperCase()}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -2016,16 +2230,28 @@ export default function InboxPage() {
         </div>
 
         {selectedTicket && (
-          <div style={{ marginTop: "0.5rem" }}>
+          <div style={{
+            backgroundColor: "#ffffff",
+            borderTop: "1px solid #e5e5ea",
+            padding: isMobile ? "1rem 0.5rem" : "1rem",
+            position: isMobile ? "fixed" : "relative",
+            bottom: 0,
+            left: isMobile ? (sidebarOpen ? "280px" : 0) : 0,
+            right: 0,
+            width: isMobile ? (sidebarOpen ? "calc(100vw - 280px)" : "100vw") : "auto",
+            transition: isMobile ? "left 0.3s ease" : "none",
+            zIndex: 100
+          }}>
             {/* Media preview */}
             {mediaPreview && (
               <div style={{
-                marginBottom: "0.5rem",
-                padding: "0.75rem",
-                backgroundColor: "#f8f9fa",
-                borderRadius: "8px",
-                border: "1px solid #dee2e6",
-                maxWidth: "300px"
+                marginBottom: "1rem",
+                padding: "1rem",
+                backgroundColor: "#f2f2f7",
+                borderRadius: "12px",
+                border: "1px solid #e5e5ea",
+                maxWidth: isMobile ? "280px" : "400px",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
               }}>
                 {mediaPreview.type === 'image' && (
                   <div style={{ textAlign: "center" }}>
@@ -2238,26 +2464,33 @@ export default function InboxPage() {
             style={{
               display: "flex",
               gap: "0.5rem",
-                alignItems: "center",
-              }}
-            >
+              alignItems: "center",
+              backgroundColor: "#ffffff",
+              padding: "0.75rem",
+              borderRadius: "24px",
+              border: "1px solid #e5e5ea",
+              marginTop: mediaPreview ? "0" : "0.5rem",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+            }}
+          >
               {/* Voice recording button */}
               <button
                 type="button"
                 onClick={isRecording ? stopRecording : startRecording}
                 style={{
-                  fontSize: "1.2rem",
+                  fontSize: "1.25rem",
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: isRecording ? "#dc3545" : "#6c757d",
-                  padding: "0.25rem",
+                  color: isRecording ? "#ff3b30" : "#8e8e93",
+                  padding: "0.5rem",
                   borderRadius: "50%",
-                  width: "32px",
-                  height: "32px",
+                  width: "36px",
+                  height: "36px",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center"
+                  justifyContent: "center",
+                  transition: "all 0.2s ease"
                 }}
                 title={isRecording ? "Stop recording" : "Record voice note"}
               >
@@ -2265,7 +2498,22 @@ export default function InboxPage() {
               </button>
 
               {/* File input */}
-              <label style={{ cursor: "pointer", fontSize: "1.2rem", padding: "0.25rem" }} title="Attach file">
+              <label style={{
+                cursor: "pointer",
+                fontSize: "1.25rem",
+                padding: "0.5rem",
+                borderRadius: "50%",
+                width: "36px",
+                height: "36px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "background-color 0.2s ease"
+              }}
+              title="Attach file"
+              onMouseEnter={(e) => e.target.style.backgroundColor = "#f2f2f7"}
+              onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+              >
                 📎
                 <input
                   type="file"
@@ -2327,33 +2575,43 @@ export default function InboxPage() {
               {/* Text input */}
             <input
               type="text"
-              placeholder="Type a reply as agent..."
+                placeholder="iMessage"
               value={agentMessage}
               onChange={(e) => setAgentMessage(e.target.value)}
               style={{
                 flex: 1,
-                padding: "0.5rem",
-                borderRadius: "4px",
-                border: "1px solid #ccc",
-              }}
-            />
+                  padding: "0.75rem 1rem",
+                  borderRadius: "20px",
+                  border: "none",
+                  backgroundColor: "#f2f2f7",
+                  fontSize: "1rem",
+                  outline: "none",
+                  fontFamily: "inherit"
+                }}
+              />
 
               {/* Send button */}
             <button
               type="submit"
                 disabled={isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording}
               style={{
-                padding: "0.5rem 1rem",
-                borderRadius: "4px",
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "50%",
                 border: "none",
-                  backgroundColor: isRecording ? "#ffc107" : "#1976d2",
-                  color: isRecording ? "#000" : "white",
-                cursor:
-                    isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? "not-allowed" : "pointer",
-                  opacity: isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? 0.7 : 1,
-              }}
-            >
-                {isSending ? "Sending..." : isRecording ? "Recording..." : "Send"}
+                  backgroundColor: (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? "#8e8e93" : "#007aff",
+                color: "white",
+                  cursor: (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "1rem",
+                  transition: "all 0.2s ease",
+                  boxShadow: (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? "none" : "0 1px 3px rgba(0,0,0,0.1)",
+                  opacity: isSending ? 0.7 : 1
+                }}
+              >
+                {isSending ? "⏳" : "➤"}
             </button>
           </form>
 
@@ -2361,14 +2619,15 @@ export default function InboxPage() {
             {showEmojiPicker && (
               <div className="emoji-picker" style={{
                 position: "absolute",
-                bottom: "60px",
+                bottom: "70px",
                 right: "20px",
-                backgroundColor: "white",
-                border: "1px solid #ccc",
-                borderRadius: "8px",
-                padding: "0.5rem",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                zIndex: 1000
+                backgroundColor: "#ffffff",
+                border: "1px solid #e5e5ea",
+                borderRadius: "16px",
+                padding: "1rem",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+                zIndex: 1000,
+                maxWidth: "300px"
               }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "0.25rem" }}>
                   {["😀", "😂", "❤️", "👍", "👋", "🎉", "🔥", "⭐", "✅", "❌", "📱", "💬", "📎", "🎵", "📹", "📄", "👤", "📍", "⏰", "💡", "🎯", "🚀", "💪", "🙏"].map(emoji => (
@@ -2386,8 +2645,8 @@ export default function InboxPage() {
                         padding: "0.25rem",
                         borderRadius: "4px"
                       }}
-                      onMouseOver={(e) => e.target.style.backgroundColor = "#f0f0f0"}
-                      onMouseOut={(e) => e.target.style.backgroundColor = "transparent"}
+                      onMouseEnter={(e) => e.target.style.backgroundColor = "#f2f2f7"}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
                     >
                       {emoji}
                     </button>
