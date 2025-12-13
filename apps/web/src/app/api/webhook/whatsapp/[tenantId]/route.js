@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 import admin from 'firebase-admin';
 import axios from 'axios';
 import twilio from 'twilio';
-import axios from 'axios';
 
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
