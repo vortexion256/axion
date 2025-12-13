@@ -702,7 +702,12 @@ export default function InboxPage() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       try {
-        setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        const loadedMessages = snapshot.docs.map((doc) => {
+          const msgData = { id: doc.id, ...doc.data() };
+          console.log('🔴 Real-time message loaded:', msgData.id, 'hasMedia:', msgData.hasMedia, 'media:', msgData.media);
+          return msgData;
+        });
+        setMessages(loadedMessages);
       } catch (error) {
         console.error('Error loading messages:', error);
       }
@@ -745,10 +750,11 @@ export default function InboxPage() {
               const allMessagesQuery = query(ticketMessagesRef, orderBy("createdAt", "asc"));
               const allMessagesSnap = await getDocs(allMessagesQuery);
 
-              const ticketMessages = allMessagesSnap.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-              }));
+              const ticketMessages = allMessagesSnap.docs.map(doc => {
+                const msgData = { id: doc.id, ...doc.data() };
+                console.log('📚 Historical message loaded:', msgData.id, 'hasMedia:', msgData.hasMedia, 'media:', msgData.media);
+                return msgData;
+              });
 
               historyWithMessages[ticket.id] = ticketMessages;
 
