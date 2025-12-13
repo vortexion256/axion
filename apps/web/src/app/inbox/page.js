@@ -176,6 +176,7 @@ export default function InboxPage() {
   // Helper function to render message content with media support
   // Component to handle media rendering with Firebase Storage URLs
   const MediaImage = ({ media, index }) => {
+    console.log('🎨 MediaImage component rendered for media:', media, 'index:', index);
     const [imageUrl, setImageUrl] = useState(media.url);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
@@ -267,10 +268,12 @@ export default function InboxPage() {
   };
 
   const renderMessageContent = (msg) => {
+    console.log('📝 renderMessageContent called for message:', msg.id, 'hasMedia:', msg.hasMedia, 'media:', msg.media);
     const content = [];
 
     // Add media attachments
     if (msg.hasMedia && msg.media) {
+      console.log('📎 Message has media, processing', msg.media.length, 'items');
       msg.media.forEach((media, index) => {
         const mediaType = media.contentType || '';
         const isImage = mediaType.startsWith('image/');
