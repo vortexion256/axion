@@ -295,6 +295,14 @@ export async function POST(request) {
               publicMediaUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filename)}?alt=media`;
               console.log(`✅ Uploaded media to Firebase: ${publicMediaUrl}`);
 
+              // Test URL accessibility (optional - for debugging)
+              try {
+                const response = await fetch(publicMediaUrl, { method: 'HEAD' });
+                console.log(`🔗 Media URL accessibility test: ${response.ok ? '✅ OK' : '❌ FAILED'} (${response.status})`);
+              } catch (testError) {
+                console.warn(`⚠️ Media URL accessibility test failed:`, testError.message);
+              }
+
             } catch (uploadError) {
               console.error(`❌ Failed to upload media to Firebase:`, uploadError);
               return NextResponse.json(
@@ -322,6 +330,12 @@ export async function POST(request) {
 
         const result = await companyTwilioClient.messages.create(messageParams);
         console.log(`✅ Twilio message sent successfully:`, result.sid);
+        console.log(`📊 Full Twilio response:`, JSON.stringify(result, null, 2));
+
+        // Check for any Twilio warnings or errors in the response
+        if (result.status && result.status !== 'queued' && result.status !== 'sent') {
+          console.warn(`⚠️ Twilio message status: ${result.status}`);
+        }
 
         console.log(
           `📤 Sent agent WhatsApp message to ${toWhatsApp}: "${body}"`

@@ -105,16 +105,16 @@ export default function InboxPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Prioritize WhatsApp-compatible formats: OGG (best), WebM, MP3 - avoid MP4 audio
+      // Prioritize WhatsApp-compatible formats: MP3, OGG (most reliable), then WebM - avoid MP4 audio
       let mimeType = '';
       const supportedFormats = [
-        'audio/ogg;codecs=opus',
-        'audio/ogg',
-        'audio/webm;codecs=opus',
-        'audio/webm',
         'audio/mp3',
         'audio/mpeg',
-        'audio/wav'
+        'audio/ogg',
+        'audio/wav',
+        'audio/ogg;codecs=opus',
+        'audio/webm;codecs=opus',
+        'audio/webm'
       ];
 
       for (const format of supportedFormats) {
