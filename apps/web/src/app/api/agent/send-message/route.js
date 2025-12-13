@@ -33,17 +33,6 @@ function getUserInitials(name) {
     .substring(0, 2);
 }
 
-// Helper function to optimize audio for WhatsApp (change extension to OGG)
-function optimizeAudioForWhatsApp(mimeType) {
-  // For WhatsApp compatibility, prefer OGG format
-  // We'll change the file extension and MIME type to OGG
-  // Note: This doesn't transcode the actual audio data, just changes metadata
-  if (mimeType.startsWith('audio/')) {
-    console.log(`🎵 Optimizing ${mimeType} for WhatsApp (declaring as OGG)`);
-    return 'audio/ogg';
-  }
-  return mimeType;
-}
 
 export async function POST(request) {
   try {
@@ -287,11 +276,7 @@ export async function POST(request) {
               // Log media details for debugging
               console.log(`📎 Media details: type=${mimeType}, size=${buffer.length} bytes, isAudio=${mimeType.startsWith('audio/')}`);
 
-              // Optimize audio MIME type for WhatsApp compatibility
-              const originalMimeType = mimeType;
-              if (mimeType.startsWith('audio/')) {
-                mimeType = optimizeAudioForWhatsApp(mimeType);
-              }
+              // Keep original MIME type - don't falsely declare as OGG
 
               // Initialize Firebase Storage bucket
               const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 'axion256system.firebasestorage.app';
@@ -300,11 +285,11 @@ export async function POST(request) {
               // Generate unique filename
               const timestamp = Date.now();
               const randomId = Math.random().toString(36).substring(2, 15);
-              // Use OGG extension for audio files to match WhatsApp preference
-              const extension = mimeType.startsWith('audio/') ? 'ogg' : mimeType.split('/')[1];
+              // Use proper extension based on actual MIME type
+              const extension = mimeType.split('/')[1] || 'audio';
               const filename = `chat-media/${timestamp}-${randomId}.${extension}`;
 
-              console.log(`📁 Uploading as: ${filename} (MIME: ${mimeType}, original: ${originalMimeType})`);
+              console.log(`📁 Uploading as: ${filename} (MIME: ${mimeType})`);
 
               // Upload to Firebase Storage
               const file = bucket.file(filename);

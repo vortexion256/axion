@@ -105,15 +105,15 @@ export default function InboxPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Prioritize OGG format for WhatsApp compatibility, then fall back to other browser-supported formats
+      // Prioritize MP3 (most compatible), then OGG, then WebM for WhatsApp compatibility
       let mimeType = '';
       const supportedFormats = [
+        'audio/mp3',              // Most compatible for WhatsApp
+        'audio/mpeg',             // MP3 alternative
         'audio/ogg;codecs=opus',  // WhatsApp preferred - Firefox, some Chrome
         'audio/ogg',              // WhatsApp compatible - Firefox
         'audio/webm;codecs=opus', // Chrome, Edge (most common)
-        'audio/webm',             // Chrome, Edge
-        'audio/mp4;codecs=mp4a',  // Safari
-        'audio/mp4'               // Safari
+        'audio/webm'              // Chrome, Edge
       ];
 
       for (const format of supportedFormats) {
@@ -1988,25 +1988,25 @@ export default function InboxPage() {
               {messages.map((msg) => {
                 console.log('🎯 Rendering message:', msg.id, 'hasMedia:', msg.hasMedia, 'media:', msg.media, 'body:', msg.body);
                 return (
-                  <div key={msg.id} style={{
-                    marginBottom: "0.5rem",
-                    padding: msg.error ? "0.75rem" : "0.25rem",
-                    borderRadius: "4px",
-                    backgroundColor: msg.error ? "#ffeaea" : "transparent",
-                    border: msg.error ? "1px solid #f44336" : "none",
-                    color: msg.error ? "#d32f2f" : "inherit"
-                  }}>
-                    <strong style={{ color: msg.from === "System" ? "#ff9800" : "inherit" }}>
-                      {msg.from}
-                    </strong>:{" "}
-                    {msg.body || JSON.stringify(msg.payload)}
-                    {msg.errorCode && (
-                      <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", color: "#666" }}>
-                        Error Code: {msg.errorCode}
-                      </div>
-                    )}
+                <div key={msg.id} style={{
+                  marginBottom: "0.5rem",
+                  padding: msg.error ? "0.75rem" : "0.25rem",
+                  borderRadius: "4px",
+                  backgroundColor: msg.error ? "#ffeaea" : "transparent",
+                  border: msg.error ? "1px solid #f44336" : "none",
+                  color: msg.error ? "#d32f2f" : "inherit"
+                }}>
+                  <strong style={{ color: msg.from === "System" ? "#ff9800" : "inherit" }}>
+                    {msg.from}
+                  </strong>:{" "}
+                  {msg.body || JSON.stringify(msg.payload)}
+                  {msg.errorCode && (
+                    <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", color: "#666" }}>
+                      Error Code: {msg.errorCode}
+                    </div>
+                  )}
                     {renderMessageContent(msg)}
-                  </div>
+                </div>
                 );
               })}
             </div>
@@ -2233,11 +2233,11 @@ export default function InboxPage() {
               </div>
             )}
 
-            <form
-              onSubmit={handleSendAgentMessage}
-              style={{
-                display: "flex",
-                gap: "0.5rem",
+          <form
+            onSubmit={handleSendAgentMessage}
+            style={{
+              display: "flex",
+              gap: "0.5rem",
                 alignItems: "center",
               }}
             >
@@ -2325,37 +2325,37 @@ export default function InboxPage() {
               </button>
 
               {/* Text input */}
-              <input
-                type="text"
-                placeholder="Type a reply as agent..."
-                value={agentMessage}
-                onChange={(e) => setAgentMessage(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                  border: "1px solid #ccc",
-                }}
-              />
+            <input
+              type="text"
+              placeholder="Type a reply as agent..."
+              value={agentMessage}
+              onChange={(e) => setAgentMessage(e.target.value)}
+              style={{
+                flex: 1,
+                padding: "0.5rem",
+                borderRadius: "4px",
+                border: "1px solid #ccc",
+              }}
+            />
 
               {/* Send button */}
-              <button
-                type="submit"
+            <button
+              type="submit"
                 disabled={isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording}
-                style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "4px",
-                  border: "none",
+              style={{
+                padding: "0.5rem 1rem",
+                borderRadius: "4px",
+                border: "none",
                   backgroundColor: isRecording ? "#ffc107" : "#1976d2",
                   color: isRecording ? "#000" : "white",
-                  cursor:
+                cursor:
                     isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? "not-allowed" : "pointer",
                   opacity: isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? 0.7 : 1,
-                }}
-              >
+              }}
+            >
                 {isSending ? "Sending..." : isRecording ? "Recording..." : "Send"}
-              </button>
-            </form>
+            </button>
+          </form>
 
             {/* Emoji picker */}
             {showEmojiPicker && (
