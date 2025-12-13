@@ -181,31 +181,44 @@ export default function InboxPage() {
     const [error, setError] = useState(false);
 
     useEffect(() => {
+      console.log('Processing media URL:', media.url);
       // If it's a Firebase Storage URL, try to get the download URL
       if (media.url.includes('firebasestorage.googleapis.com')) {
         try {
+          console.log('Detected Firebase Storage URL, attempting to get download URL');
           const storage = getStorage();
           // Extract the path from the Firebase Storage URL
           const urlParts = media.url.split('/o/')[1]?.split('?')[0];
+          console.log('URL parts:', urlParts);
           if (urlParts) {
             const decodedPath = decodeURIComponent(urlParts);
+            console.log('Decoded path:', decodedPath);
             const storageRef = ref(storage, decodedPath);
+            console.log('Storage ref created:', storageRef);
             getDownloadURL(storageRef).then((url) => {
+              console.log('Got download URL:', url);
               setImageUrl(url);
               setLoading(false);
             }).catch((err) => {
               console.error('Failed to get download URL:', err);
-              setError(true);
+              console.error('Error details:', err.message, err.code);
+              // Fallback to original URL if Firebase SDK fails
+              console.log('Falling back to original URL');
+              setImageUrl(media.url);
               setLoading(false);
             });
           } else {
+            console.log('No URL parts found, using original URL');
             setLoading(false);
           }
         } catch (err) {
-          console.error('Error with Firebase Storage:', err);
+          console.error('Error with Firebase Storage setup:', err);
+          // Fallback to original URL
+          setImageUrl(media.url);
           setLoading(false);
         }
       } else {
+        console.log('Not a Firebase Storage URL, using as-is');
         setLoading(false);
       }
     }, [media.url]);
