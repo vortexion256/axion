@@ -47,6 +47,7 @@ export default function InboxPage() {
   const [recordedAudio, setRecordedAudio] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [recordingTimeout, setRecordingTimeout] = useState(null);
 
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -104,16 +105,31 @@ export default function InboxPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Prioritize OGG (WhatsApp compatible), then MP4, then WebM
-      const mimeType = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' :
-                      MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' :
-                      MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' :
-                      MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+      // Prioritize WhatsApp-compatible formats: OGG (best), WebM, MP3 - avoid MP4 audio
+      let mimeType = '';
+      const supportedFormats = [
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp3',
+        'audio/mpeg',
+        'audio/wav'
+      ];
+
+      for (const format of supportedFormats) {
+        if (MediaRecorder.isTypeSupported(format)) {
+          mimeType = format;
+          break;
+        }
+      }
 
       if (!mimeType) {
         alert('Audio recording is not supported in this browser.');
         return;
       }
+
+      console.log('🎤 Starting audio recording with format:', mimeType);
 
       const recorder = new MediaRecorder(stream, { mimeType });
       const chunks = [];
@@ -131,8 +147,18 @@ export default function InboxPage() {
           size: audioFile.size,
           type: audioFile.type,
           name: audioFile.name,
-          sizeMB: (audioFile.size / (1024 * 1024)).toFixed(2)
+          sizeMB: (audioFile.size / (1024 * 1024)).toFixed(2),
+          mimeType: mimeType,
+          extension: extension
         });
+
+        // Check size limit for audio (5MB max)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (audioFile.size > maxSize) {
+          alert(`Audio file is too large (${(audioFile.size / (1024 * 1024)).toFixed(2)}MB). Maximum allowed size is 5MB. Please record a shorter message.`);
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
 
         setRecordedAudio(audioFile);
         setSelectedMedia(audioFile);
@@ -156,6 +182,17 @@ export default function InboxPage() {
         url: null,
         isRecording: true
       });
+
+      // Set a timeout to automatically stop recording after 2 minutes (120 seconds)
+      const recordingTimeout = setTimeout(() => {
+        if (isRecording) {
+          console.log('⏰ Recording timeout reached (2 minutes), stopping automatically');
+          stopRecording();
+        }
+      }, 120000); // 2 minutes
+
+      // Store timeout ID to clear it when recording stops manually
+      setRecordingTimeout(recordingTimeout);
     } catch (error) {
       console.error('Error starting recording:', error);
       alert('Could not access microphone. Please check permissions.');
@@ -167,6 +204,12 @@ export default function InboxPage() {
       mediaRecorder.stop();
       setIsRecording(false);
       setMediaRecorder(null);
+    }
+
+    // Clear recording timeout if it exists
+    if (recordingTimeout) {
+      clearTimeout(recordingTimeout);
+      setRecordingTimeout(null);
     }
   };
 
