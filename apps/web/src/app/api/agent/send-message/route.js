@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import admin from 'firebase-admin';
 import twilio from 'twilio';
+import { getStorage } from 'firebase-admin/storage';
 
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
@@ -257,11 +258,53 @@ export async function POST(request) {
           messageParams.body = attributedBody;
         }
 
-        // Add media if provided
+        // Handle media uploads to Firebase Storage and send to WhatsApp
         if (mediaUrl) {
-          messageParams.mediaUrl = [mediaUrl]; // Twilio requires array format
+          let publicMediaUrl = mediaUrl;
+
+          // If it's a data URL (from frontend upload), upload to Firebase Storage
+          if (mediaUrl.startsWith('data:')) {
+            try {
+              console.log(`📤 Uploading media to Firebase Storage...`);
+
+              // Extract data from data URL
+              const [mimeInfo, base64Data] = mediaUrl.split(',');
+              const mimeType = mimeInfo.split(':')[1].split(';')[0];
+              const buffer = Buffer.from(base64Data, 'base64');
+
+              // Initialize Firebase Storage
+              const bucket = getStorage().bucket();
+
+              // Generate unique filename
+              const timestamp = Date.now();
+              const randomId = Math.random().toString(36).substring(2, 15);
+              const extension = mimeType.split('/')[1];
+              const filename = `chat-media/${timestamp}-${randomId}.${extension}`;
+
+              // Upload to Firebase Storage
+              const file = bucket.file(filename);
+              await file.save(buffer, {
+                metadata: {
+                  contentType: mimeType,
+                },
+                public: true, // Make file publicly accessible
+              });
+
+              // Get public URL
+              publicMediaUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+              console.log(`✅ Uploaded media to Firebase: ${publicMediaUrl}`);
+
+            } catch (uploadError) {
+              console.error(`❌ Failed to upload media to Firebase:`, uploadError);
+              return NextResponse.json(
+                { error: 'Failed to upload media file' },
+                { status: 500 }
+              );
+            }
+          }
+
+          messageParams.mediaUrl = [publicMediaUrl]; // Twilio requires array format
           if (mediaType) {
-            // Twilio infers content type from URL, but we can log it
             console.log(`📎 Sending media with type: ${mediaType}`);
           }
           console.log(`📤 Sending WhatsApp message with media:`, {
