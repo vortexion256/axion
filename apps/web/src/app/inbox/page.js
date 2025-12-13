@@ -17,6 +17,7 @@ import {
   where,
   limit,
 } from "firebase/firestore";
+import { getStorage, ref, getDownloadURL } from "firebase/storage";
 
 export default function InboxPage() {
   const { user, company, loading, userRole, userCompanies, respondentCompanies, selectedCompanyId, selectCompanyContext, updateRespondentStatus, updateAdminStatus } = useAuth();
@@ -192,6 +193,7 @@ export default function InboxPage() {
               <img
                 src={media.url}
                 alt="Image attachment"
+                crossOrigin="anonymous"
                 style={{
                   maxWidth: '250px',
                   maxHeight: '250px',
@@ -201,6 +203,7 @@ export default function InboxPage() {
                 }}
                 onClick={() => window.open(media.url, '_blank')}
                 onError={(e) => {
+                  console.error('Failed to load image:', media.url);
                   e.target.style.display = 'none';
                   e.target.nextSibling.style.display = 'block';
                 }}
