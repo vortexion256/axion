@@ -1,6 +1,7 @@
 // Next.js API Route for WhatsApp webhook
 import { NextResponse } from 'next/server';
 import admin from 'firebase-admin';
+import axios from 'axios';
 import twilio from 'twilio';
 import axios from 'axios';
 
@@ -107,23 +108,94 @@ export async function POST(request, { params }) {
     const from = body.from || body.From;
     const id = body.id || body.MessageSid || body.SmsMessageSid;
 
-    // Handle media messages
+    // Handle media messages - download actual content from Twilio
     const numMedia = parseInt(body.NumMedia || '0');
     const mediaItems = [];
 
     if (numMedia > 0) {
+      console.log(`📥 Processing ${numMedia} media items...`);
+
       for (let i = 0; i < numMedia; i++) {
         const mediaUrl = body[`MediaUrl${i}`];
         const mediaContentType = body[`MediaContentType${i}`];
 
-        if (mediaUrl) {
-          mediaItems.push({
-            url: mediaUrl,
-            contentType: mediaContentType,
-            index: i
-          });
+        if (mediaUrl && mediaContentType) {
+          try {
+            console.log(`⬇️ Downloading media ${i + 1}/${numMedia} from Twilio...`);
+
+            // Download media using Twilio authentication
+            const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+            const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+
+            if (!twilioSid || !twilioToken) {
+              console.error('❌ Twilio credentials not available for media download');
+              mediaItems.push({
+                url: mediaUrl,
+                contentType: mediaContentType,
+                error: 'Twilio credentials missing',
+                index: i
+              });
+              continue;
+            }
+
+            const auth = Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64');
+
+            const mediaResponse = await axios.get(mediaUrl, {
+              headers: {
+                'Authorization': `Basic ${auth}`
+              },
+              responseType: 'arraybuffer',
+              timeout: 30000, // 30 second timeout
+              maxContentLength: 10 * 1024 * 1024 // 10MB limit
+            });
+
+            const mediaBuffer = Buffer.from(mediaResponse.data);
+            const fileSizeMB = (mediaBuffer.length / (1024 * 1024)).toFixed(2);
+            console.log(`✅ Downloaded media ${i + 1}: ${mediaBuffer.length} bytes (${fileSizeMB}MB)`);
+
+            // Check file size limits
+            const maxSize = mediaContentType.startsWith('image/') ? 1024 * 1024 : // 1MB for images
+                           mediaContentType.startsWith('audio/') ? 5 * 1024 * 1024 : // 5MB for audio
+                           10 * 1024 * 1024; // 10MB for other files
+
+            if (mediaBuffer.length > maxSize) {
+              console.warn(`⚠️ Media ${i + 1} too large (${fileSizeMB}MB), storing URL only`);
+              mediaItems.push({
+                url: mediaUrl, // Keep Twilio URL for large files
+                contentType: mediaContentType,
+                size: mediaBuffer.length,
+                warning: 'File too large for data URL storage',
+                index: i
+              });
+              continue;
+            }
+
+            // Convert to data URL for storage (works for images and small audio)
+            const base64Data = mediaBuffer.toString('base64');
+            const dataUrl = `data:${mediaContentType};base64,${base64Data}`;
+
+            mediaItems.push({
+              url: dataUrl, // Store actual content as data URL
+              contentType: mediaContentType,
+              originalUrl: mediaUrl, // Keep original for reference
+              size: mediaBuffer.length,
+              index: i
+            });
+
+          } catch (error) {
+            console.error(`❌ Failed to download media ${i + 1}:`, error.message);
+            // Still store the URL as fallback, though it won't work for display
+            mediaItems.push({
+              url: mediaUrl,
+              contentType: mediaContentType,
+              error: 'Download failed',
+              index: i
+            });
+          }
         }
       }
+
+      console.log(`📦 Processed ${mediaItems.length} media items successfully`);
     }
 
     if (!from) {
