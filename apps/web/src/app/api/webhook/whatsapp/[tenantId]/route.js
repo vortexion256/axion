@@ -122,18 +122,14 @@ export async function POST(request, { params }) {
           try {
             console.log(`⬇️ Downloading media ${i + 1}/${numMedia} from Twilio...`);
 
-            // Download media using Twilio authentication
-            const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-            const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+            // Download media using company-specific Twilio authentication
+            const twilioSid = company.twilioAccountSid;
+            const twilioToken = company.twilioAuthToken;
 
             if (!twilioSid || !twilioToken) {
-              console.error('❌ Twilio credentials not available for media download');
-              mediaItems.push({
-                url: mediaUrl,
-                contentType: mediaContentType,
-                error: 'Twilio credentials missing',
-                index: i
-              });
+              console.error(`❌ Twilio credentials not configured for company ${tenantId}`);
+              // Don't store media if we can't download it
+              console.warn(`⚠️ Skipping media ${i + 1} - credentials required for download`);
               continue;
             }
 
@@ -158,14 +154,8 @@ export async function POST(request, { params }) {
                            10 * 1024 * 1024; // 10MB for other files
 
             if (mediaBuffer.length > maxSize) {
-              console.warn(`⚠️ Media ${i + 1} too large (${fileSizeMB}MB), storing URL only`);
-              mediaItems.push({
-                url: mediaUrl, // Keep Twilio URL for large files
-                contentType: mediaContentType,
-                size: mediaBuffer.length,
-                warning: 'File too large for data URL storage',
-                index: i
-              });
+              console.warn(`⚠️ Media ${i + 1} too large (${fileSizeMB}MB), skipping storage`);
+              // Don't store large files as they can't be displayed as data URLs
               continue;
             }
 
@@ -194,7 +184,11 @@ export async function POST(request, { params }) {
         }
       }
 
-      console.log(`📦 Processed ${mediaItems.length} media items successfully`);
+      if (numMedia > 0 && mediaItems.length === 0) {
+        console.warn(`⚠️ No media items were successfully processed out of ${numMedia} total`);
+      } else {
+        console.log(`📦 Processed ${mediaItems.length} media items successfully`);
+      }
     }
 
     if (!from) {

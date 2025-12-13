@@ -236,8 +236,9 @@ export async function POST(request) {
 
     if (!companyTwilioClient || !company.twilioPhoneNumber) {
       console.warn(
-        `⚠️ Company ${tenantId} Twilio not configured; stored agent message but did not send WhatsApp message.`
+        `⚠️ Company ${tenantId} Twilio not configured (missing SID/token or phone number); stored agent message but did not send WhatsApp message.`
       );
+      console.warn(`Available config: SID=${!!company.twilioAccountSid}, Token=${!!company.twilioAuthToken}, Phone=${!!company.twilioPhoneNumber}`);
     } else {
       try {
         const toWhatsApp = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;

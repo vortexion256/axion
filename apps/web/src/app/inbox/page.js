@@ -262,6 +262,27 @@ export default function InboxPage() {
               </div>
             </div>
           );
+        } else if (media.error) {
+          // Handle media download errors
+          content.push(
+            <div key={`media-${index}`} style={{
+              marginBottom: '0.5rem',
+              padding: '0.75rem',
+              backgroundColor: '#fff3cd',
+              border: '1px solid #ffc107',
+              borderRadius: '8px'
+            }}>
+              <div style={{ fontSize: '0.875rem', color: '#856404' }}>
+                📎 Media attachment ({media.contentType})
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#856404', marginTop: '0.25rem' }}>
+                {media.error === 'Company Twilio credentials missing' ?
+                  'Media could not be displayed - Twilio credentials not configured for this company' :
+                  media.warning || 'Media could not be loaded'
+                }
+              </div>
+            </div>
+          );
         } else {
           // Document or other file
           const fileIcon = mediaType.includes('pdf') ? '📕' :
