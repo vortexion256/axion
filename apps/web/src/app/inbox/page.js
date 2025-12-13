@@ -105,16 +105,16 @@ export default function InboxPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Prioritize WhatsApp-compatible formats: MP3, OGG (most reliable), then WebM - avoid MP4 audio
+      // Prioritize WhatsApp-compatible formats: OGG/Opus first (most reliable), then MP3, then WebM - avoid MP4/WAV
       let mimeType = '';
       const supportedFormats = [
-        'audio/mp3',
-        'audio/mpeg',
-        'audio/ogg',
-        'audio/wav',
-        'audio/ogg;codecs=opus',
-        'audio/webm;codecs=opus',
-        'audio/webm'
+        'audio/ogg;codecs=opus',  // WhatsApp preferred
+        'audio/ogg',              // WhatsApp compatible
+        'audio/mp3',              // WhatsApp compatible
+        'audio/mpeg',             // WhatsApp compatible
+        'audio/wav',              // May not work well
+        'audio/webm;codecs=opus', // Fallback
+        'audio/webm'              // Fallback
       ];
 
       for (const format of supportedFormats) {
@@ -138,8 +138,9 @@ export default function InboxPage() {
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: mimeType });
         const url = URL.createObjectURL(blob);
-        const extension = mimeType.includes('mp4') ? 'm4a' :
-                         mimeType.includes('ogg') ? 'ogg' :
+        const extension = mimeType.includes('ogg') ? 'ogg' :
+                         mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'mp3' :
+                         mimeType.includes('wav') ? 'wav' :
                          mimeType.includes('webm') ? 'webm' : 'audio';
         const audioFile = new File([blob], `voice-note.${extension}`, { type: mimeType });
 

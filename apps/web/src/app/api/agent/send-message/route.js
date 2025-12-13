@@ -258,7 +258,7 @@ export async function POST(request) {
           messageParams.body = attributedBody;
         }
 
-        // Handle media uploads to Firebase Storage and send to WhatsApp
+          // Handle media uploads to Firebase Storage and send to WhatsApp
         if (mediaUrl) {
           let publicMediaUrl = mediaUrl;
 
@@ -271,6 +271,9 @@ export async function POST(request) {
               const [mimeInfo, base64Data] = mediaUrl.split(',');
               const mimeType = mimeInfo.split(':')[1].split(';')[0];
               const buffer = Buffer.from(base64Data, 'base64');
+
+              // Log media details for debugging
+              console.log(`📎 Media details: type=${mimeType}, size=${buffer.length} bytes, isAudio=${mimeType.startsWith('audio/')}`);
 
               // Initialize Firebase Storage bucket
               const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 'axion256system.firebasestorage.app';
@@ -299,6 +302,12 @@ export async function POST(request) {
               try {
                 const response = await fetch(publicMediaUrl, { method: 'HEAD' });
                 console.log(`🔗 Media URL accessibility test: ${response.ok ? '✅ OK' : '❌ FAILED'} (${response.status})`);
+                if (!response.ok) {
+                  console.error(`❌ Media URL not accessible: ${publicMediaUrl} (Status: ${response.status})`);
+                }
+                // Log content type for debugging
+                const contentType = response.headers.get('content-type');
+                console.log(`📄 Media content-type: ${contentType}`);
               } catch (testError) {
                 console.warn(`⚠️ Media URL accessibility test failed:`, testError.message);
               }
@@ -338,7 +347,7 @@ export async function POST(request) {
         }
 
         console.log(
-          `📤 Sent agent WhatsApp message to ${toWhatsApp}: "${body}"`
+          `📤 Sent agent WhatsApp message to ${toWhatsApp}: "${messageParams.body || '[Media only]'}"`
         );
       } catch (twilioErr) {
         console.error(
