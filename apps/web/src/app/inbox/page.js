@@ -283,8 +283,31 @@ export default function InboxPage() {
         const isContact = mediaType.includes('vcf') || media.url.includes('.vcf');
 
         if (isImage) {
+          console.log('🎴 Rendering image media:', media);
           content.push(
-            <MediaImage key={`media-${index}`} media={media} index={index} />
+            <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
+              <img
+                src={media.url}
+                alt="Image attachment"
+                style={{
+                  maxWidth: '250px',
+                  maxHeight: '250px',
+                  borderRadius: '8px',
+                  border: '1px solid #e0e0e0',
+                  cursor: 'pointer'
+                }}
+                onClick={() => window.open(media.url, '_blank')}
+                onLoad={() => console.log('✅ Image loaded successfully:', media.url)}
+                onError={(e) => {
+                  console.error('❌ Image failed to load:', media.url, e);
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'block';
+                }}
+              />
+              <div style={{ display: 'none', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px', marginTop: '0.5rem' }}>
+                🖼️ Image failed to load: {media.url}
+              </div>
+            </div>
           );
         } else if (isAudio) {
           content.push(
