@@ -1583,8 +1583,6 @@ export default function InboxPage() {
                           </div>
                         ))
                       )}
-                );
-              })}
                   </div>
                 </div>
               ) : (
@@ -1791,25 +1789,27 @@ export default function InboxPage() {
               {messages.map((msg) => {
                 console.log('🎯 Rendering message:', msg.id, 'hasMedia:', msg.hasMedia, 'media:', msg.media, 'body:', msg.body);
                 return (
-                <div key={msg.id} style={{
-                  marginBottom: "0.5rem",
-                  padding: msg.error ? "0.75rem" : "0.25rem",
-                  borderRadius: "4px",
-                  backgroundColor: msg.error ? "#ffeaea" : "transparent",
-                  border: msg.error ? "1px solid #f44336" : "none",
-                  color: msg.error ? "#d32f2f" : "inherit"
-                }}>
-                  <strong style={{ color: msg.from === "System" ? "#ff9800" : "inherit" }}>
-                    {msg.from}
-                  </strong>:{" "}
-                  {msg.body || JSON.stringify(msg.payload)}
-                  {msg.errorCode && (
-                    <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", color: "#666" }}>
-                      Error Code: {msg.errorCode}
-                    </div>
-                  )}
-                </div>
-              ))}
+                  <div key={msg.id} style={{
+                    marginBottom: "0.5rem",
+                    padding: msg.error ? "0.75rem" : "0.25rem",
+                    borderRadius: "4px",
+                    backgroundColor: msg.error ? "#ffeaea" : "transparent",
+                    border: msg.error ? "1px solid #f44336" : "none",
+                    color: msg.error ? "#d32f2f" : "inherit"
+                  }}>
+                    <strong style={{ color: msg.from === "System" ? "#ff9800" : "inherit" }}>
+                      {msg.from}
+                    </strong>:{" "}
+                    {msg.body || JSON.stringify(msg.payload)}
+                    {msg.errorCode && (
+                      <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", color: "#666" }}>
+                        Error Code: {msg.errorCode}
+                      </div>
+                    )}
+                    {renderMessageContent(msg)}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p>Select a ticket</p>
