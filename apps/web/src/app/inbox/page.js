@@ -174,6 +174,85 @@ export default function InboxPage() {
   }, []);
 
   // Helper function to render message content with media support
+  // Component to handle media rendering with Firebase Storage URLs
+  const MediaImage = ({ media, index }) => {
+    const [imageUrl, setImageUrl] = useState(media.url);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+
+    useEffect(() => {
+      // If it's a Firebase Storage URL, try to get the download URL
+      if (media.url.includes('firebasestorage.googleapis.com')) {
+        try {
+          const storage = getStorage();
+          // Extract the path from the Firebase Storage URL
+          const urlParts = media.url.split('/o/')[1]?.split('?')[0];
+          if (urlParts) {
+            const decodedPath = decodeURIComponent(urlParts);
+            const storageRef = ref(storage, decodedPath);
+            getDownloadURL(storageRef).then((url) => {
+              setImageUrl(url);
+              setLoading(false);
+            }).catch((err) => {
+              console.error('Failed to get download URL:', err);
+              setError(true);
+              setLoading(false);
+            });
+          } else {
+            setLoading(false);
+          }
+        } catch (err) {
+          console.error('Error with Firebase Storage:', err);
+          setLoading(false);
+        }
+      } else {
+        setLoading(false);
+      }
+    }, [media.url]);
+
+    if (loading) {
+      return (
+        <div key={`media-${index}`} style={{ marginBottom: '0.5rem', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+          📷 Loading image...
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div key={`media-${index}`} style={{ marginBottom: '0.5rem', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+          🖼️ Image attachment (could not load)
+        </div>
+      );
+    }
+
+    return (
+      <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
+        <img
+          src={imageUrl}
+          alt="Image attachment"
+          crossOrigin="anonymous"
+          style={{
+            maxWidth: '250px',
+            maxHeight: '250px',
+            borderRadius: '8px',
+            border: '1px solid #e0e0e0',
+            cursor: 'pointer'
+          }}
+          onClick={() => window.open(imageUrl, '_blank')}
+          onError={(e) => {
+            console.error('Failed to load image:', imageUrl);
+            e.target.style.display = 'none';
+            e.target.nextSibling.style.display = 'block';
+          }}
+        />
+        <div style={{ display: 'none', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px', marginTop: '0.5rem' }}>
+          🖼️ Image attachment (could not load)
+        </div>
+      </div>
+    );
+  };
+
   const renderMessageContent = (msg) => {
     const content = [];
 
@@ -189,29 +268,7 @@ export default function InboxPage() {
 
         if (isImage) {
           content.push(
-            <div key={`media-${index}`} style={{ marginBottom: '0.5rem' }}>
-              <img
-                src={media.url}
-                alt="Image attachment"
-                crossOrigin="anonymous"
-                style={{
-                  maxWidth: '250px',
-                  maxHeight: '250px',
-                  borderRadius: '8px',
-                  border: '1px solid #e0e0e0',
-                  cursor: 'pointer'
-                }}
-                onClick={() => window.open(media.url, '_blank')}
-                onError={(e) => {
-                  console.error('Failed to load image:', media.url);
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'block';
-                }}
-              />
-              <div style={{ display: 'none', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px', marginTop: '0.5rem' }}>
-                🖼️ Image attachment (could not load)
-              </div>
-            </div>
+            <MediaImage key={`media-${index}`} media={media} index={index} />
           );
         } else if (isAudio) {
           content.push(
