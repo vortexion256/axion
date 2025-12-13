@@ -285,11 +285,93 @@ export default function InboxPage() {
 
   const renderMessageContent = (msg) => {
     console.log('📝 renderMessageContent called for message:', msg.id, 'hasMedia:', msg.hasMedia, 'media:', msg.media);
-    const content = [];
 
-    // Add media attachments
-    if (msg.hasMedia && msg.media) {
-      console.log('📎 Message has media, processing', msg.media.length, 'items');
+    // If message has both media and text, combine them inline
+    if (msg.hasMedia && msg.media && msg.body) {
+      const combinedContent = [];
+
+      // Add text first
+      combinedContent.push(
+        <span key="text" style={{
+          color: "#333",
+          lineHeight: "1.4",
+          wordWrap: "break-word",
+          marginRight: "0.5rem"
+        }}>
+          {msg.body}
+        </span>
+      );
+
+      // Add media inline
+      msg.media.forEach((media, index) => {
+        const mediaType = media.contentType || '';
+        const isImage = mediaType.startsWith('image/');
+        const isAudio = mediaType.startsWith('audio/');
+
+        if (isImage) {
+          console.log('🎴 Rendering inline image media:', media);
+          combinedContent.push(
+            <img
+              key={`media-${index}`}
+              src={media.url}
+              alt="Image attachment"
+              style={{
+                maxWidth: '150px',
+                maxHeight: '150px',
+                borderRadius: '6px',
+                border: '1px solid #e0e0e0',
+                cursor: 'pointer',
+                marginRight: '0.5rem',
+                verticalAlign: 'middle'
+              }}
+              onClick={() => window.open(media.url, '_blank')}
+              onLoad={() => console.log('✅ Image loaded successfully:', media.url)}
+              onError={(e) => {
+                console.error('❌ Image failed to load:', media.url, e);
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'inline';
+              }}
+            />
+          );
+          combinedContent.push(
+            <span key={`error-${index}`} style={{
+              display: 'none',
+              color: '#666',
+              fontSize: '0.8rem',
+              marginRight: '0.5rem'
+            }}>
+              🖼️ [Image]
+            </span>
+          );
+        } else if (isAudio) {
+          combinedContent.push(
+            <span key={`audio-${index}`} style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              backgroundColor: '#f0f8ff',
+              border: '1px solid #1976d2',
+              borderRadius: '4px',
+              padding: '0.25rem 0.5rem',
+              marginRight: '0.5rem',
+              fontSize: '0.8rem'
+            }}>
+              <span>🎵</span>
+              <audio controls style={{ height: '20px', width: '120px' }}>
+                <source src={media.url} type={mediaType} />
+                Voice note
+              </audio>
+            </span>
+          );
+        }
+      });
+
+      return combinedContent;
+    }
+
+    // For media-only messages
+    if (msg.hasMedia && msg.media && !msg.body) {
+      const content = [];
       msg.media.forEach((media, index) => {
         const mediaType = media.contentType || '';
         const isImage = mediaType.startsWith('image/');
@@ -339,10 +421,23 @@ export default function InboxPage() {
                 <span>🎵</span>
                 <span style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>Voice Note</span>
               </div>
-              <audio controls style={{ width: '100%' }}>
+              <audio
+                controls
+                style={{ width: '100%' }}
+                onError={(e) => {
+                  console.error('❌ Audio failed to load:', media.url, e);
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'block';
+                }}
+                onLoadStart={() => console.log('🎵 Audio started loading:', media.url)}
+                onCanPlay={() => console.log('✅ Audio can play:', media.url)}
+              >
                 <source src={media.url} type={mediaType} />
                 Your browser does not support audio playback.
               </audio>
+              <div style={{ display: 'none', padding: '0.5rem', backgroundColor: '#ffeaea', borderRadius: '4px', marginTop: '0.5rem', fontSize: '0.8rem', color: '#d32f2f' }}>
+                🎵 Audio failed to load
+              </div>
             </div>
           );
         } else if (isVideo) {
@@ -431,11 +526,12 @@ export default function InboxPage() {
           );
         }
       });
+      return content;
     }
 
-    // Add text content
-    if (msg.body) {
-      content.push(
+    // For text-only messages
+    if (msg.body && (!msg.hasMedia || !msg.media)) {
+      return (
         <div key="text" style={{
           color: "#333",
           lineHeight: "1.4",
@@ -447,19 +543,15 @@ export default function InboxPage() {
     }
 
     // Fallback for old messages without proper structure
-    if (content.length === 0) {
-      content.push(
-        <div key="fallback" style={{
-          color: "#333",
-          lineHeight: "1.4",
-          wordWrap: "break-word"
-        }}>
-          {msg.body || JSON.stringify(msg.payload)}
-        </div>
-      );
-    }
-
-    return content;
+    return (
+      <div key="fallback" style={{
+        color: "#333",
+        lineHeight: "1.4",
+        wordWrap: "break-word"
+      }}>
+        {msg.body || JSON.stringify(msg.payload)}
+      </div>
+    );
   };
 
   // Loading timeout - show error if page doesn't load within 30 seconds
@@ -2213,8 +2305,8 @@ export default function InboxPage() {
                   backgroundColor: isRecording ? "#ffc107" : "#1976d2",
                   color: isRecording ? "#000" : "white",
                   cursor:
-                    isSending || (!agentMessage.trim() && !selectedMedia) || isRecording ? "not-allowed" : "pointer",
-                  opacity: isSending || (!agentMessage.trim() && !selectedMedia) || isRecording ? 0.7 : 1,
+                    isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? "not-allowed" : "pointer",
+                  opacity: isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? 0.7 : 1,
                 }}
               >
                 {isSending ? "Sending..." : isRecording ? "Recording..." : "Send"}
