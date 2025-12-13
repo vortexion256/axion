@@ -336,8 +336,14 @@ export default function DashboardPage() {
       </header>
 
       {/* Main Content */}
-      <main style={{ padding: '2rem' }}>
-        <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+      <main style={{
+        padding: window.innerWidth <= 768 ? '1rem' : '2rem',
+        paddingBottom: window.innerWidth <= 768 ? '5rem' : '2rem'
+      }}>
+        <div style={{
+          maxWidth: window.innerWidth <= 768 ? '100%' : '800px',
+          margin: '0 auto'
+        }}>
           <h2 style={{ marginBottom: '1rem', color: '#333' }}>Dashboard</h2>
 
           {/* Twilio Error Alert */}
@@ -408,15 +414,37 @@ export default function DashboardPage() {
           {/* Status Card */}
           <div style={{
             backgroundColor: 'white',
-            padding: '2rem',
-            borderRadius: '8px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            marginBottom: '2rem'
+            padding: window.innerWidth <= 768 ? '1.5rem 1rem' : '2rem',
+            borderRadius: window.innerWidth <= 768 ? '12px' : '8px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            marginBottom: window.innerWidth <= 768 ? '1.5rem' : '2rem',
+            border: '1px solid #e5e5ea'
           }}>
             <h3 style={{ marginTop: 0, color: '#333' }}>Setup Status</h3>
-              <div style={{ marginBottom: '1rem', fontSize: '14px', color: '#666' }}>
-              <strong>Company ID:</strong> {company.id}<br/>
-              <strong>Webhook URL:</strong> {`${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhook/whatsapp/${company.id}`}
+              <div style={{
+                marginBottom: '1rem',
+                fontSize: window.innerWidth <= 768 ? '13px' : '14px',
+                color: '#666',
+                wordBreak: 'break-all'
+              }}>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <strong>Company ID:</strong> {company.id}
+              </div>
+              <div>
+                <strong>Webhook URL:</strong>
+                <div style={{
+                  marginTop: '0.25rem',
+                  padding: '0.5rem',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  fontSize: window.innerWidth <= 768 ? '11px' : '12px',
+                  wordBreak: 'break-all',
+                  border: '1px solid #e9ecef'
+                }}>
+                  {`${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhook/whatsapp/${company.id}`}
+                </div>
+              </div>
               {company.hasTwilioErrors && (
                 <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#ffeaea', borderRadius: '4px', border: '1px solid #f44336' }}>
                   <strong style={{ color: '#d32f2f' }}>⚠️ Active Delivery Issues</strong><br/>
@@ -427,62 +455,163 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: window.innerWidth <= 768 ? '1fr' : 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: window.innerWidth <= 768 ? '0.75rem' : '1rem',
+              marginTop: '1rem'
+            }}>
               <div style={{
-                padding: '1rem',
-                border: `2px solid ${company.twilioAccountSid ? '#4caf50' : '#ff9800'}`,
-                borderRadius: '4px',
-                backgroundColor: company.twilioAccountSid ? '#e8f5e8' : '#fff3e0'
+                padding: window.innerWidth <= 768 ? '1.25rem' : '1.5rem',
+                borderRadius: '12px',
+                backgroundColor: '#ffffff',
+                border: `1px solid ${company.twilioAccountSid ? '#34c759' : '#ff9500'}`,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem'
               }}>
-                <div style={{ fontWeight: 'bold', color: company.twilioAccountSid ? '#4caf50' : '#ff9800' }}>
-                  Twilio Account
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: company.twilioAccountSid ? '#34c759' : '#ff9500'
+                  }} />
+                  <div style={{
+                    fontSize: window.innerWidth <= 768 ? '0.9rem' : '1rem',
+                    fontWeight: '600',
+                    color: '#1d1d1f'
+                  }}>
+                    Twilio Account
+                  </div>
                 </div>
-                <div style={{ fontSize: '14px', marginTop: '0.5rem' }}>
-                  {company.twilioAccountSid ? '✓ Configured' : '⚠ Not configured'}
+                <div style={{
+                  fontSize: window.innerWidth <= 768 ? '0.8rem' : '0.875rem',
+                  color: company.twilioAccountSid ? '#34c759' : '#ff9500',
+                  fontWeight: '500'
+                }}>
+                  {company.twilioAccountSid ? '✓ Configured' : '⚠️ Not configured'}
                 </div>
               </div>
 
               <div style={{
-                padding: '1rem',
-                border: `2px solid ${company.geminiApiKey ? '#4caf50' : '#ff9800'}`,
-                borderRadius: '4px',
-                backgroundColor: company.geminiApiKey ? '#e8f5e8' : '#fff3e0'
+                padding: window.innerWidth <= 768 ? '1.25rem' : '1.5rem',
+                borderRadius: '12px',
+                backgroundColor: '#ffffff',
+                border: `1px solid ${company.geminiApiKey ? '#34c759' : '#ff9500'}`,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem'
               }}>
-                <div style={{ fontWeight: 'bold', color: company.geminiApiKey ? '#4caf50' : '#ff9800' }}>
-                  Gemini API
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: company.geminiApiKey ? '#34c759' : '#ff9500'
+                  }} />
+                  <div style={{
+                    fontSize: window.innerWidth <= 768 ? '0.9rem' : '1rem',
+                    fontWeight: '600',
+                    color: '#1d1d1f'
+                  }}>
+                    Gemini API
+                  </div>
                 </div>
-                <div style={{ fontSize: '14px', marginTop: '0.5rem' }}>
-                  {company.geminiApiKey ? '✓ Configured' : '⚠ Not configured'}
+                <div style={{
+                  fontSize: window.innerWidth <= 768 ? '0.8rem' : '0.875rem',
+                  color: company.geminiApiKey ? '#34c759' : '#ff9500',
+                  fontWeight: '500'
+                }}>
+                  {company.geminiApiKey ? '✓ Configured' : '⚠️ Not configured'}
                 </div>
               </div>
 
               <div style={{
-                padding: '1rem',
-                border: `2px solid ${company.twilioPhoneNumber ? '#4caf50' : '#ff9800'}`,
-                borderRadius: '4px',
-                backgroundColor: company.twilioPhoneNumber ? '#e8f5e8' : '#fff3e0'
+                padding: window.innerWidth <= 768 ? '1.25rem' : '1.5rem',
+                borderRadius: '12px',
+                backgroundColor: '#ffffff',
+                border: `1px solid ${company.twilioPhoneNumber ? '#34c759' : '#ff9500'}`,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem'
               }}>
-                <div style={{ fontWeight: 'bold', color: company.twilioPhoneNumber ? '#4caf50' : '#ff9800' }}>
-                  WhatsApp Number
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: company.twilioPhoneNumber ? '#34c759' : '#ff9500'
+                  }} />
+                  <div style={{
+                    fontSize: window.innerWidth <= 768 ? '0.9rem' : '1rem',
+                    fontWeight: '600',
+                    color: '#1d1d1f'
+                  }}>
+                    WhatsApp Number
+                  </div>
                 </div>
-                <div style={{ fontSize: '14px', marginTop: '0.5rem' }}>
-                  {company.twilioPhoneNumber ? '✓ Configured' : '⚠ Not configured'}
+                <div style={{
+                  fontSize: window.innerWidth <= 768 ? '0.8rem' : '0.875rem',
+                  color: company.twilioPhoneNumber ? '#34c759' : '#ff9500',
+                  fontWeight: '500'
+                }}>
+                  {company.twilioPhoneNumber ? '✓ Configured' : '⚠️ Not configured'}
                 </div>
               </div>
 
               <div style={{
-                padding: '1rem',
-                border: `2px solid ${errorConversationCount === 0 ? '#4caf50' : '#f44336'}`,
-                borderRadius: '4px',
-                backgroundColor: errorConversationCount === 0 ? '#e8f5e8' : '#ffeaea'
+                padding: window.innerWidth <= 768 ? '1.25rem' : '1.5rem',
+                borderRadius: '12px',
+                backgroundColor: '#ffffff',
+                border: `1px solid ${errorConversationCount === 0 ? '#34c759' : '#ff3b30'}`,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem'
               }}>
-                <div style={{ fontWeight: 'bold', color: errorConversationCount === 0 ? '#4caf50' : '#f44336' }}>
-                  Message Delivery
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: errorConversationCount === 0 ? '#34c759' : '#ff3b30'
+                  }} />
+                  <div style={{
+                    fontSize: window.innerWidth <= 768 ? '0.9rem' : '1rem',
+                    fontWeight: '600',
+                    color: '#1d1d1f'
+                  }}>
+                    Message Delivery
+                  </div>
                 </div>
-                <div style={{ fontSize: '14px', marginTop: '0.5rem' }}>
+                <div style={{
+                  fontSize: window.innerWidth <= 768 ? '0.8rem' : '0.875rem',
+                  color: errorConversationCount === 0 ? '#34c759' : '#ff3b30',
+                  fontWeight: '500'
+                }}>
                   {errorConversationCount === 0
                     ? '✓ All messages delivered'
-                    : `⚠ ${errorConversationCount} conversation${errorConversationCount > 1 ? 's' : ''} with delivery errors`
+                    : `⚠️ ${errorConversationCount} conversation${errorConversationCount > 1 ? 's' : ''} with delivery errors`
                   }
                 </div>
               </div>

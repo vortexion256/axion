@@ -1704,7 +1704,7 @@ export default function InboxPage() {
       >
         {/* Mobile Header */}
         {isMobile && (
-              <div style={{
+          <div style={{
             backgroundColor: "#ffffff",
             borderBottom: "1px solid #e5e5ea",
             padding: "0.75rem 1rem",
@@ -1736,8 +1736,28 @@ export default function InboxPage() {
             }}>
               {selectedTicket ? `Chat with ${selectedTicket.customerId?.split('@')[0] || 'Customer'}` : 'Inbox'}
             </div>
-                  </div>
-                )}
+            {/* History toggle button for mobile */}
+            {selectedTicket && (
+              <button
+                onClick={() => setShowHistorySection(!showHistorySection)}
+                style={{
+                  backgroundColor: "transparent",
+                  border: "none",
+                  padding: "0.5rem",
+                  borderRadius: "50%",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: showHistorySection ? "#007aff" : "#8e8e93"
+                }}
+                title={showHistorySection ? "Hide history" : "Show history"}
+              >
+                <span style={{ fontSize: "1.25rem" }}>📚</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Desktop Header */}
         {!isMobile && selectedTicket && (
@@ -1751,17 +1771,18 @@ export default function InboxPage() {
             boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
           }}>
             Chat with {selectedTicket.customerId?.split('@')[0] || 'Customer'}
-              </div>
-            )}
+          </div>
+        )}
 
         {/* Messages Area */}
         <div style={{
           flex: 1,
           overflowY: "auto",
           padding: isMobile ? "1rem 0.5rem" : "1rem",
-          display: "flex",
+          display: isMobile && !showHistorySection ? "flex" : "block",
           flexDirection: "column",
-          gap: "0.5rem"
+          gap: "0.5rem",
+          height: isMobile && showHistorySection ? "100vh" : "auto"
         }}>
 
           {/* History Section Toggle */}
@@ -1796,13 +1817,14 @@ export default function InboxPage() {
           {/* Customer History Section */}
           {customerHistory.length > 0 && showHistorySection && (
             <div style={{
-              backgroundColor: "#f5f5f5",
-              borderRadius: "8px",
-              padding: "1rem",
-              marginBottom: "1rem",
-              border: "1px solid #e0e0e0",
-              maxHeight: "400px",
-              overflowY: "auto"
+              backgroundColor: isMobile ? "#f2f2f7" : "#f5f5f5",
+              borderRadius: isMobile ? "0" : "8px",
+              padding: isMobile ? "1rem 0.5rem" : "1rem",
+              marginBottom: isMobile ? "0" : "1rem",
+              border: isMobile ? "none" : "1px solid #e0e0e0",
+              maxHeight: isMobile ? "calc(100vh - 120px)" : "400px",
+              overflowY: "auto",
+              height: isMobile ? "100%" : "auto"
             }}>
               <div style={{
                 display: "flex",
@@ -2154,14 +2176,18 @@ export default function InboxPage() {
                     {/* Message Bubble */}
                     <div style={{
                       maxWidth: isMobile ? "280px" : "400px",
-                      backgroundColor: isAgentMessage ? "#007aff" : isSystemMessage ? "#e5e5ea" : "#ffffff",
+                      backgroundColor: isAgentMessage ? "#007aff" : isSystemMessage ? "#f2f2f7" : "#ffffff",
                       color: isAgentMessage ? "white" : "#1d1d1f",
-                      padding: "0.75rem",
+                      padding: isMobile ? "0.875rem" : "0.75rem",
                       borderRadius: isAgentMessage ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                      boxShadow: isAgentMessage ? "0 2px 8px rgba(0,122,255,0.15)" : "0 1px 3px rgba(0,0,0,0.08)",
                       position: "relative",
                       wordWrap: "break-word",
-                      animation: "slideIn 0.3s ease-out"
+                      animation: "slideIn 0.3s ease-out",
+                      border: isSystemMessage ? "1px solid #e5e5ea" : "none",
+                      backdropFilter: "blur(10px)",
+                      fontSize: isMobile ? "0.9375rem" : "1rem",
+                      lineHeight: "1.4"
                     }}>
                       {/* Sender name for system messages */}
                       {isSystemMessage && (
