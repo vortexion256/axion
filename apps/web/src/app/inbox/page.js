@@ -96,14 +96,26 @@ export default function InboxPage() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      // Try to use MP3 or OGG format if supported, fallback to WebM
+      const mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' :
+                      MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' :
+                      MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+
+      if (!mimeType) {
+        alert('Audio recording is not supported in this browser.');
+        return;
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType });
       const chunks = [];
 
       recorder.ondataavailable = (e) => chunks.push(e.data);
       recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const blob = new Blob(chunks, { type: mimeType });
         const url = URL.createObjectURL(blob);
-        const audioFile = new File([blob], 'voice-note.webm', { type: 'audio/webm' });
+        const extension = mimeType.includes('mp4') ? 'm4a' :
+                         mimeType.includes('ogg') ? 'ogg' : 'webm';
+        const audioFile = new File([blob], `voice-note.${extension}`, { type: mimeType });
 
         setRecordedAudio(audioFile);
         setSelectedMedia(audioFile);
@@ -785,8 +797,9 @@ export default function InboxPage() {
               reader.readAsDataURL(selectedMedia);
             });
             requestData.mediaUrl = mediaUrl;
+            // Use the actual file extension for better WhatsApp compatibility
             requestData.mediaType = selectedMedia.type;
-            console.log("🎵 Voice note converted to data URL for sending");
+            console.log("🎵 Voice note converted to data URL for sending:", selectedMedia.type);
           }
           // For other audio/video files
           else if ((selectedMedia.type.startsWith('audio/') || selectedMedia.type.startsWith('video/')) && selectedMedia.size <= 5 * 1024 * 1024) {

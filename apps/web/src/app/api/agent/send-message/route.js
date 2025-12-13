@@ -258,14 +258,25 @@ export async function POST(request) {
 
         // Add media if provided
         if (mediaUrl) {
-          messageParams.mediaUrl = mediaUrl;
+          messageParams.mediaUrl = [mediaUrl]; // Twilio requires array format
           if (mediaType) {
             // Twilio infers content type from URL, but we can log it
             console.log(`📎 Sending media with type: ${mediaType}`);
           }
+          console.log(`📤 Sending WhatsApp message with media:`, {
+            to: toWhatsApp,
+            mediaUrl: messageParams.mediaUrl,
+            body: messageParams.body ? 'with text' : 'media only'
+          });
+        } else {
+          console.log(`📤 Sending WhatsApp text message:`, {
+            to: toWhatsApp,
+            body: messageParams.body
+          });
         }
 
-        await companyTwilioClient.messages.create(messageParams);
+        const result = await companyTwilioClient.messages.create(messageParams);
+        console.log(`✅ Twilio message sent successfully:`, result.sid);
 
         console.log(
           `📤 Sent agent WhatsApp message to ${toWhatsApp}: "${body}"`
