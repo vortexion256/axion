@@ -126,8 +126,13 @@ export async function POST(request, { params }) {
       }
     }
 
-    if (!message || !from) {
-      return NextResponse.json({ error: "Message and sender are required" }, { status: 400 });
+    if (!from) {
+      return NextResponse.json({ error: "Sender is required" }, { status: 400 });
+    }
+
+    // Allow messages with either text content or media
+    if (!message && numMedia === 0) {
+      return NextResponse.json({ error: "Message must contain either text or media" }, { status: 400 });
     }
 
     // Load company configuration
