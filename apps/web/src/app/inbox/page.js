@@ -105,15 +105,15 @@ export default function InboxPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Use browser-supported formats for recording, prioritize WebM/Opus (most common), then MP4 for Safari
+      // Prioritize OGG format for WhatsApp compatibility, then fall back to other browser-supported formats
       let mimeType = '';
       const supportedFormats = [
+        'audio/ogg;codecs=opus',  // WhatsApp preferred - Firefox, some Chrome
+        'audio/ogg',              // WhatsApp compatible - Firefox
         'audio/webm;codecs=opus', // Chrome, Edge (most common)
         'audio/webm',             // Chrome, Edge
-        'audio/ogg;codecs=opus',  // Firefox
         'audio/mp4;codecs=mp4a',  // Safari
-        'audio/mp4',              // Safari
-        'audio/ogg'               // Firefox fallback
+        'audio/mp4'               // Safari
       ];
 
       for (const format of supportedFormats) {

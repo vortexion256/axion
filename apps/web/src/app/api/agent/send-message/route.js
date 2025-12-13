@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import admin from 'firebase-admin';
 import twilio from 'twilio';
 import { getStorage } from 'firebase-admin/storage';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
@@ -31,6 +33,51 @@ function getUserInitials(name) {
     .map(word => word.charAt(0).toUpperCase())
     .join('')
     .substring(0, 2);
+}
+
+// Helper function to transcode audio to OGG format
+async function transcodeAudioToOGG(inputBuffer, inputMimeType) {
+  try {
+    console.log(`🎵 Transcoding ${inputMimeType} to OGG format...`);
+
+    const ffmpeg = new FFmpeg();
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+
+    // Load FFmpeg
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+
+    // Determine input extension
+    const inputExt = inputMimeType.includes('webm') ? 'webm' :
+                    inputMimeType.includes('mp4') ? 'mp4' :
+                    inputMimeType.includes('ogg') ? 'ogg' : 'audio';
+
+    // Write input file
+    const inputFileName = `input.${inputExt}`;
+    await ffmpeg.writeFile(inputFileName, new Uint8Array(inputBuffer));
+
+    // Transcode to OGG
+    await ffmpeg.exec([
+      '-i', inputFileName,
+      '-c:a', 'libopus',  // Use Opus codec for OGG
+      '-b:a', '128k',     // Bitrate
+      '-ar', '48000',     // Sample rate
+      '-ac', '2',         // Stereo
+      'output.ogg'
+    ]);
+
+    // Read output file
+    const outputData = await ffmpeg.readFile('output.ogg');
+    console.log(`✅ Transcoding completed, output size: ${outputData.length} bytes`);
+
+    return Buffer.from(outputData);
+
+  } catch (error) {
+    console.error('❌ Audio transcoding failed:', error);
+    throw new Error(`Audio transcoding failed: ${error.message}`);
+  }
 }
 
 export async function POST(request) {
@@ -269,11 +316,24 @@ export async function POST(request) {
 
               // Extract data from data URL
               const [mimeInfo, base64Data] = mediaUrl.split(',');
-              const mimeType = mimeInfo.split(':')[1].split(';')[0];
-              const buffer = Buffer.from(base64Data, 'base64');
+              let mimeType = mimeInfo.split(':')[1].split(';')[0];
+              let buffer = Buffer.from(base64Data, 'base64');
 
               // Log media details for debugging
               console.log(`📎 Media details: type=${mimeType}, size=${buffer.length} bytes, isAudio=${mimeType.startsWith('audio/')}`);
+
+              // Transcode audio to OGG format for WhatsApp compatibility
+              if (mimeType.startsWith('audio/') && !mimeType.includes('ogg')) {
+                try {
+                  console.log(`🎵 Converting ${mimeType} to OGG for WhatsApp compatibility...`);
+                  buffer = await transcodeAudioToOGG(buffer, mimeType);
+                  mimeType = 'audio/ogg';
+                  console.log(`✅ Audio transcoded to OGG, new size: ${buffer.length} bytes`);
+                } catch (transcodeError) {
+                  console.warn(`⚠️ Audio transcoding failed, using original format:`, transcodeError.message);
+                  // Continue with original format if transcoding fails
+                }
+              }
 
               // Initialize Firebase Storage bucket
               const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 'axion256system.firebasestorage.app';
@@ -282,7 +342,7 @@ export async function POST(request) {
               // Generate unique filename
               const timestamp = Date.now();
               const randomId = Math.random().toString(36).substring(2, 15);
-              const extension = mimeType.split('/')[1];
+              const extension = mimeType.includes('ogg') ? 'ogg' : mimeType.split('/')[1];
               const filename = `chat-media/${timestamp}-${randomId}.${extension}`;
 
               // Upload to Firebase Storage
