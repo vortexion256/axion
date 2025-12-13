@@ -183,17 +183,53 @@ export async function POST(request, { params }) {
               continue;
             }
 
-            // Convert to data URL for storage (works for images and small audio)
-            const base64Data = mediaBuffer.toString('base64');
-            const dataUrl = `data:${mediaContentType};base64,${base64Data}`;
+            // Upload to Firebase Storage and get public URL
+            try {
+              // Initialize Firebase Storage bucket
+              const bucketName = process.env.FIREBASE_STORAGE_BUCKET || `${process.env.FIREBASE_PROJECT_ID}.appspot.com`;
+              const bucket = admin.storage().bucket(bucketName);
 
-            mediaItems.push({
-              url: dataUrl, // Store actual content as data URL
-              contentType: mediaContentType,
-              originalUrl: mediaUrl, // Keep original for reference
-              size: mediaBuffer.length,
-              index: i
-            });
+              // Generate unique filename
+              const timestamp = Date.now();
+              const randomId = Math.random().toString(36).substring(2, 15);
+              const extension = mediaContentType.split('/')[1];
+              const filename = `chat-media/${timestamp}-${randomId}.${extension}`;
+
+              // Upload to Firebase Storage
+              const file = bucket.file(filename);
+              await file.save(mediaBuffer, {
+                metadata: {
+                  contentType: mediaContentType,
+                },
+                public: true, // Make file publicly accessible
+              });
+
+              // Get public URL
+              const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+              console.log(`✅ Uploaded incoming media to Firebase: ${publicUrl}`);
+
+              mediaItems.push({
+                url: publicUrl, // Store public Firebase Storage URL
+                contentType: mediaContentType,
+                originalUrl: mediaUrl, // Keep original Twilio URL for reference
+                size: mediaBuffer.length,
+                index: i
+              });
+            } catch (uploadError) {
+              console.error(`❌ Failed to upload media to Firebase:`, uploadError);
+              // Fallback to data URL if Firebase upload fails
+              const base64Data = mediaBuffer.toString('base64');
+              const dataUrl = `data:${mediaContentType};base64,${base64Data}`;
+
+              mediaItems.push({
+                url: dataUrl, // Fallback to data URL
+                contentType: mediaContentType,
+                originalUrl: mediaUrl,
+                size: mediaBuffer.length,
+                index: i
+              });
+              console.log(`⚠️ Using data URL fallback for media ${i + 1}`);
+            }
 
           } catch (downloadError) {
             console.error(`❌ Failed to download media ${i + 1}:`, downloadError.message);
