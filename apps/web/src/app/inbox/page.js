@@ -1819,7 +1819,9 @@ export default function InboxPage() {
               padding: 0,
               marginBottom: "0.5rem",
               border: "none",
-              width: "100%"
+              width: "100%",
+              maxHeight: "none",
+              overflowY: "visible"
             }}>
               <div style={{
                 display: "flex",
