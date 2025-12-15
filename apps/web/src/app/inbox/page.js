@@ -2116,6 +2116,7 @@ export default function InboxPage() {
             overflowY: "auto",
             marginTop: "0.5rem",
             paddingRight: "0.5rem",
+            paddingBottom: isMobile ? "6rem" : "1rem", // Add bottom margin for mobile chat input
           }}
         >
           {selectedTicket ? (
