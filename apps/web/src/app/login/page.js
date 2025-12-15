@@ -51,7 +51,7 @@ export default function LoginPage() {
         fontSize: '18px'
       }}>
         <div style={{ marginBottom: '1rem' }}>
-          {loading ? 'Signing you in...' : 'Loading your companies...'}
+          {loading ? 'Signing you in...' : 'Loading your companies...X'}
         </div>
         <div style={{ fontSize: '14px', color: '#666' }}>
           Setting up your workspace
