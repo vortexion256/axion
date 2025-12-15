@@ -1791,7 +1791,7 @@ export default function InboxPage() {
         {/* Messages Area */}
         <div style={{
           overflowY: showHistorySection ? "auto" : "visible",
-          padding: isMobile ? "1rem 0.5rem" : "1rem",
+          padding: isMobile ? "1rem 1rem" : "1.25rem 1.5rem",
           display: isMobile && !showHistorySection ? "flex" : "block",
           flexDirection: "column",
           gap: "0.5rem",
