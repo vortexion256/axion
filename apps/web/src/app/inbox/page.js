@@ -1810,21 +1810,22 @@ export default function InboxPage() {
           {/* Customer History Section */}
           {customerHistory.length > 0 && showHistorySection && (
             <div style={{
-              backgroundColor: isMobile ? "#f2f2f7" : "#f5f5f5",
-              borderRadius: isMobile ? "0" : "8px",
-              padding: isMobile ? "1rem 0.5rem" : "1rem",
+              backgroundColor: "transparent",
+              borderRadius: 0,
+              padding: 0,
               marginBottom: isMobile ? "0" : "1rem",
-              border: isMobile ? "none" : "1px solid #e0e0e0",
+              border: "none",
               maxHeight: isMobile ? "calc(100vh - 120px)" : "400px",
               overflowY: "auto",
               height: isMobile ? "100%" : "auto"
             }}>
               <div style={{
                 display: "flex",
-                justifyContent: "flex-start",
+                justifyContent: "center",
                 alignItems: "center",
                 marginBottom: "0.5rem",
-                gap: "0.5rem"
+                gap: "0.5rem",
+                textAlign: "center"
               }}>
                 <h3 style={{
                   margin: "0",
@@ -1832,7 +1833,8 @@ export default function InboxPage() {
                   color: "#666",
                   display: "flex",
                   alignItems: "center",
-                  gap: "0.5rem"
+                  gap: "0.5rem",
+                  justifyContent: "center"
                 }}>
                   📚 Previous Conversations with {selectedTicket?.customerId || 'Unknown'}
                 </h3>
