@@ -1736,26 +1736,6 @@ export default function InboxPage() {
             }}>
               {selectedTicket ? `Chat with ${selectedTicket.customerId?.split('@')[0] || 'Customer'}` : 'Inbox'}
                   </div>
-            {/* History toggle button for mobile */}
-            {selectedTicket && (
-              <button
-                onClick={() => setShowHistorySection(!showHistorySection)}
-                style={{
-                  backgroundColor: "transparent",
-                  border: "none",
-                  padding: "0.5rem",
-                  borderRadius: "50%",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: showHistorySection ? "#007aff" : "#8e8e93"
-                }}
-                title={showHistorySection ? "Hide history" : "Show history"}
-              >
-                <span style={{ fontSize: "1.25rem" }}>📚</span>
-              </button>
-                )}
               </div>
             )}
 
