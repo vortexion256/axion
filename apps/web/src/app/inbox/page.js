@@ -1765,12 +1765,46 @@ export default function InboxPage() {
             backgroundColor: "#ffffff",
             borderBottom: "1px solid #e5e5ea",
             padding: "1rem",
-            fontSize: "1.25rem",
-            fontWeight: "600",
-            color: "#1d1d1f",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            justifyContent: "space-between",
             boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
           }}>
-            Chat with {selectedTicket.customerId?.split('@')[0] || 'Customer'}
+            <div style={{
+              fontSize: "1.25rem",
+              fontWeight: "600",
+              color: "#1d1d1f",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              flex: 1,
+              minWidth: 0
+            }}>
+              Chat with {selectedTicket.customerId?.split('@')[0] || 'Customer'}
+            </div>
+            {customerHistory.length > 0 && (
+              <button
+                onClick={() => setShowHistorySection(!showHistorySection)}
+                style={{
+                  fontSize: "0.85rem",
+                  padding: "0.5rem 0.9rem",
+                  borderRadius: "6px",
+                  border: "1px solid #ddd",
+                  backgroundColor: showHistorySection ? "#f44336" : "#4caf50",
+                  color: "white",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                  whiteSpace: "nowrap"
+                }}
+                title={showHistorySection ? "Hide previous conversations" : "Show previous conversations"}
+              >
+                {showHistorySection ? "👁️ Hide History" : "📚 Show History"}
+              </button>
+            )}
           </div>
         )}
 
