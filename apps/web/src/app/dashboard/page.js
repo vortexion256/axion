@@ -194,13 +194,21 @@ export default function DashboardPage() {
       {/* Header */}
       <header style={{
         backgroundColor: 'white',
-        padding: '1rem 2rem',
+        padding: window.innerWidth <= 768 ? '0.75rem 1rem' : '1rem 2rem',
         borderBottom: '1px solid #e0e0e0',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        rowGap: '0.5rem'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+          maxWidth: '100%'
+        }}>
           <h1 style={{ color: '#1976d2', margin: 0, fontSize: '1.5rem' }}>Axion</h1>
           <span style={{ color: '#666' }}>|</span>
 
@@ -316,8 +324,15 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span style={{ color: '#666', fontSize: '14px' }}>{user.email}</span>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+          maxWidth: '100%',
+          justifyContent: window.innerWidth <= 768 ? 'flex-start' : 'flex-end'
+        }}>
+          <span style={{ color: '#666', fontSize: '14px', wordBreak: 'break-all' }}>{user.email}</span>
           <button
             onClick={handleLogout}
             style={{
@@ -639,7 +654,12 @@ export default function DashboardPage() {
                 borderRadius: '4px'
               }}>
                 <h4 style={{ marginTop: 0, color: '#0c5460' }}>Test Your Webhook</h4>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <div style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  marginBottom: '0.5rem',
+                  flexDirection: window.innerWidth <= 768 ? 'column' : 'row'
+                }}>
                   <input
                     type="text"
                     placeholder="Enter test message..."
@@ -649,7 +669,8 @@ export default function DashboardPage() {
                       flex: 1,
                       padding: '0.5rem',
                       border: '1px solid #ced4da',
-                      borderRadius: '4px'
+                      borderRadius: '4px',
+                      minWidth: 0 // prevent overflow in flex
                     }}
                   />
                   <button
@@ -662,7 +683,8 @@ export default function DashboardPage() {
                       border: 'none',
                       borderRadius: '4px',
                       cursor: isTesting || !testMessage.trim() ? 'not-allowed' : 'pointer',
-                      opacity: isTesting || !testMessage.trim() ? 0.7 : 1
+                      opacity: isTesting || !testMessage.trim() ? 0.7 : 1,
+                      width: window.innerWidth <= 768 ? '100%' : 'auto'
                     }}
                   >
                     {isTesting ? 'Testing...' : 'Test Webhook'}
