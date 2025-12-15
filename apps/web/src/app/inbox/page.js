@@ -2122,27 +2122,8 @@ export default function InboxPage() {
                     marginBottom: "0.75rem",
                     justifyContent: isAgentMessage ? "flex-end" : "flex-start",
                     alignItems: "flex-end",
-                    gap: "0.5rem"
+                    gap: "0.25rem"
                   }}>
-                    {/* Avatar for customer messages */}
-                    {!isAgentMessage && !isSystemMessage && (
-                      <div style={{
-                        width: "32px",
-                        height: "32px",
-                        borderRadius: "50%",
-                        backgroundColor: "#007aff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "white",
-                        fontSize: "0.875rem",
-                        fontWeight: "600",
-                        flexShrink: 0
-                      }}>
-                        {(selectedTicket?.customerId?.split('@')[0]?.charAt(0) || 'C').toUpperCase()}
-                      </div>
-                    )}
-
                     {/* Message Bubble */}
                     <div style={{
                       maxWidth: isMobile ? "280px" : "400px",
@@ -2171,17 +2152,6 @@ export default function InboxPage() {
                         </div>
                       )}
 
-                      {/* Message content */}
-                      {msg.body && (
-                        <div style={{
-                          fontSize: "1rem",
-                          lineHeight: "1.4",
-                          marginBottom: msg.hasMedia ? "0.5rem" : 0
-                        }}>
-                          {msg.body}
-                        </div>
-                      )}
-
                       {/* Media content */}
                       {renderMessageContent(msg)}
 
@@ -2198,24 +2168,6 @@ export default function InboxPage() {
                   )}
                 </div>
 
-                    {/* Avatar for agent messages */}
-                    {isAgentMessage && (
-                      <div style={{
-                        width: "32px",
-                        height: "32px",
-                        borderRadius: "50%",
-                        backgroundColor: "#34c759",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "white",
-                        fontSize: "0.875rem",
-                        fontWeight: "600",
-                        flexShrink: 0
-                      }}>
-                        {(user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'A').toUpperCase()}
-                      </div>
-                    )}
                   </div>
                 );
               })}
