@@ -2138,7 +2138,9 @@ export default function InboxPage() {
                       border: isSystemMessage ? "1px solid #e5e5ea" : "none",
                       backdropFilter: "blur(10px)",
                       fontSize: isMobile ? "0.9375rem" : "1rem",
-                      lineHeight: "1.4"
+                      lineHeight: "1.4",
+                      marginLeft: !isAgentMessage ? (isMobile ? "5px" : "15px") : 0,
+                      marginRight: isAgentMessage ? (isMobile ? "5px" : "15px") : 0
                     }}>
                       {/* Sender name for system messages */}
                       {isSystemMessage && (
