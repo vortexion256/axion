@@ -1590,12 +1590,15 @@ export default function InboxPage() {
           <div
             style={{
               marginTop: "0.75rem",
-              paddingTop: "0.5rem",
+              padding: isMobile ? "0.75rem" : "1rem",
+              paddingTop: "0.75rem",
               borderTop: "1px solid #eee",
+              backgroundColor: "#fafafa",
+              borderRadius: "8px"
             }}
           >
             {selectedTicket && (isAdmin || (isRespondent && selectedTicket.assignedEmail === user?.email)) && (
-              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexDirection: "column" }}>
+              <div style={{ display: "flex", gap: "0.75rem", marginBottom: "0.75rem", flexDirection: "column" }}>
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                   <div style={{ fontSize: "0.85rem" }}>
                     <strong>Status:</strong>
@@ -1643,22 +1646,25 @@ export default function InboxPage() {
                   )}
                 </div>
 
-                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  <div style={{ fontSize: "0.85rem" }}>
-                    <strong>AI status:</strong>{" "}
-                    {selectedTicket?.aiEnabled === false ? "Off" : "On"}
-                  </div>
+                <div style={{
+                  display: "flex",
+                  gap: isMobile ? "0.5rem" : "0.75rem",
+                  alignItems: "center",
+                  flexDirection: isMobile ? "column" : "row"
+                }}>
                   <button
                     onClick={handleToggleAI}
                     disabled={isTogglingAI}
                     style={{
-                      padding: "0.25rem 0.5rem",
-                      fontSize: "0.75rem",
-                      borderRadius: "3px",
+                      padding: "0.35rem 0.75rem",
+                      fontSize: "0.8rem",
+                      borderRadius: "6px",
                       border: "1px solid #ccc",
-                    backgroundColor:
-                      selectedTicket?.aiEnabled === false ? "#e0f7fa" : "#ffe0e0",
+                      backgroundColor:
+                        selectedTicket?.aiEnabled === false ? "#e0f7fa" : "#ffe0e0",
                       cursor: isTogglingAI ? "default" : "pointer",
+                      fontWeight: 600,
+                      minWidth: "120px"
                     }}
                   >
                     {isTogglingAI
@@ -1667,27 +1673,30 @@ export default function InboxPage() {
                     ? "Turn AI On"
                     : "Turn AI Off"}
                   </button>
+
+                  {isAdmin && (
+                    <button
+                      onClick={handleDeleteTicket}
+                      disabled={isDeleting}
+                      style={{
+                        padding: "0.35rem 0.75rem",
+                        fontSize: "0.8rem",
+                        borderRadius: "6px",
+                        border: "1px solid #f44336",
+                        backgroundColor: "#ffeaea",
+                        color: "#f44336",
+                        cursor: isDeleting ? "default" : "pointer",
+                        fontWeight: 600,
+                        minWidth: "140px"
+                      }}
+                    >
+                      {isDeleting ? "Deleting..." : "🗑️ Delete Ticket"}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
 
-            {isAdmin && (
-              <button
-                onClick={handleDeleteTicket}
-                disabled={isDeleting}
-                style={{
-                  padding: "0.25rem 0.5rem",
-                  fontSize: "0.75rem",
-                  borderRadius: "3px",
-                  border: "1px solid #f44336",
-                  backgroundColor: "#ffeaea",
-                  color: "#f44336",
-                  cursor: isDeleting ? "default" : "pointer",
-                }}
-              >
-                {isDeleting ? "Deleting..." : "🗑️ Delete Ticket"}
-              </button>
-            )}
           </div>
         )}
       </div>
