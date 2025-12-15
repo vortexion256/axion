@@ -855,6 +855,10 @@ export default function InboxPage() {
         );
 
         setTickets(ticketsWithErrors);
+        // Auto-select latest ticket if none selected or previous selection no longer exists
+        if ((!selectedTicket || !ticketsWithErrors.find(t => t.id === selectedTicket.id)) && ticketsWithErrors.length > 0) {
+          setSelectedTicket(ticketsWithErrors[0]); // already ordered by updatedAt desc
+        }
         setLoadingError(null); // Clear any previous errors on successful load
       } catch (error) {
         console.error('Error loading conversations:', error);
@@ -1523,12 +1527,12 @@ export default function InboxPage() {
               style={{
                 padding: isMobile ? "1rem" : "0.75rem",
                 cursor: "pointer",
-                backgroundColor: selectedTicket?.id === ticket.id ? "#007aff" : "#ffffff",
-                color: selectedTicket?.id === ticket.id ? "white" : "#1d1d1f",
+                backgroundColor: selectedTicket?.id === ticket.id ? "#e6e6e6" : "#ffffff",
+                color: "#1d1d1f",
                 borderRadius: "12px",
                 marginBottom: "0.5rem",
                 border: ticket.hasErrors ? "2px solid #ff3b30" : "1px solid #e5e5ea",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                boxShadow: selectedTicket?.id === ticket.id ? "0 1px 6px rgba(0,0,0,0.08)" : "0 1px 3px rgba(0,0,0,0.05)",
                 transition: "all 0.2s ease"
               }}
               onClick={() => {
