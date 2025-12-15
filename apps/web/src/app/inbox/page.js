@@ -1818,35 +1818,6 @@ export default function InboxPage() {
           height: isMobile && showHistorySection ? "100vh" : "auto"
         }}>
 
-          {/* History Section Toggle - Only show on desktop */}
-          {customerHistory.length > 0 && !isMobile && (
-            <div style={{
-              display: "flex",
-              justifyContent: "center",
-              marginBottom: "1rem"
-            }}>
-              <button
-                onClick={() => setShowHistorySection(!showHistorySection)}
-                style={{
-                  fontSize: "0.8rem",
-                  padding: "0.4rem 0.8rem",
-                  borderRadius: "6px",
-                  border: "1px solid #ddd",
-                  backgroundColor: showHistorySection ? "#f44336" : "#4caf50",
-                  color: "white",
-                  cursor: "pointer",
-                  fontWeight: "500",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.3rem"
-                }}
-                title={showHistorySection ? "Hide previous conversations" : "Show previous conversations"}
-              >
-                {showHistorySection ? "👁️ Hide History" : "📚 Show History"}
-              </button>
-            </div>
-          )}
-
           {/* Customer History Section */}
           {customerHistory.length > 0 && showHistorySection && (
             <div style={{
