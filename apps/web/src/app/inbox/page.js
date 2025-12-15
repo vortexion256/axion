@@ -1813,11 +1813,9 @@ export default function InboxPage() {
               backgroundColor: "transparent",
               borderRadius: 0,
               padding: 0,
-              marginBottom: isMobile ? "0" : "1rem",
+              marginBottom: "1rem",
               border: "none",
-              maxHeight: isMobile ? "calc(100vh - 120px)" : "400px",
-              overflowY: "auto",
-              height: isMobile ? "100%" : "auto"
+              width: "100%"
             }}>
               <div style={{
                 display: "flex",
@@ -1842,26 +1840,16 @@ export default function InboxPage() {
 
               {showCumulativeHistory ? (
                 // Chronological View - All messages in order
-                <div style={{
-                  backgroundColor: "white",
-                  borderRadius: "6px",
-                  border: "1px solid #ddd",
-                  overflow: "hidden"
-                }}>
+                <div>
                   <div style={{
-                    padding: "0.75rem",
-                    backgroundColor: "#f8f9fa",
-                    borderBottom: "1px solid #eee",
+                    padding: "0.25rem 0.5rem",
                     fontSize: "0.8rem",
                     color: "#666",
                     fontWeight: "500"
                   }}>
                     📅 Complete Chronological History ({customerHistory.reduce((sum, ticket) => sum + ticket.messageCount, 0)} messages)
                   </div>
-                  <div style={{
-                    maxHeight: "500px",
-                    overflowY: "auto"
-                  }}>
+                  <div>
                     {customerHistory
                       .sort((a, b) => (a.updatedAt?.seconds || 0) - (b.updatedAt?.seconds || 0)) // Sort by date
                       .map((historyTicket, ticketIndex) =>
@@ -1928,19 +1916,14 @@ export default function InboxPage() {
                     <div
                       key={historyTicket.id}
                       style={{
-                        backgroundColor: "white",
-                        borderRadius: "6px",
-                        marginBottom: "0.75rem",
-                        border: "1px solid #ddd",
-                        overflow: "hidden"
+                        marginBottom: "0.75rem"
                       }}
                     >
                       {/* Ticket Header */}
                       <div
                         style={{
-                          padding: "0.75rem",
+                          padding: "0.5rem 0.25rem",
                           cursor: "pointer",
-                          borderBottom: isExpanded ? "1px solid #eee" : "none",
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center"
@@ -2021,11 +2004,7 @@ export default function InboxPage() {
 
                       {/* Expandable Messages */}
                       {isExpanded && (
-                        <div style={{
-                          maxHeight: "300px",
-                          overflowY: "auto",
-                          backgroundColor: "#fafafa"
-                        }}>
+                        <div>
                           {ticketMessages.map((msg, index) => (
                             <div
                               key={msg.id}
