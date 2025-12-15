@@ -1817,7 +1817,7 @@ export default function InboxPage() {
               backgroundColor: "transparent",
               borderRadius: 0,
               padding: 0,
-              marginBottom: "1rem",
+              marginBottom: "0.5rem",
               border: "none",
               width: "100%"
             }}>
@@ -2082,14 +2082,14 @@ export default function InboxPage() {
             <div>
               {customerHistory.length > 0 && messages.length > 0 && (!isMobile || showHistorySection) && (
                 <div style={{
-                  backgroundColor: "#e3f2fd",
-                  border: "1px solid #2196f3",
-                  borderRadius: "6px",
-                  padding: "0.75rem",
-                  margin: "0 15px 1rem 15px",
+                  backgroundColor: "transparent",
+                  border: "none",
+                  borderRadius: "0",
+                  padding: "0.5rem 0",
+                  margin: "0 0 0.75rem 0",
                   textAlign: "center",
                   fontSize: "0.85rem",
-                  color: "#1976d2"
+                  color: "#333"
                 }}>
                   <div style={{ fontWeight: "500", marginBottom: "0.25rem" }}>
                     🔄 New Conversation Started
