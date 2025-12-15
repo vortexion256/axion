@@ -727,18 +727,26 @@ export default function DashboardPage() {
               {/* Invite New Respondent */}
               <div style={{ marginBottom: '2rem' }}>
                 <h4 style={{ color: '#333', marginBottom: '1rem' }}>Invite New Respondent</h4>
-                <form onSubmit={handleInviteRespondent} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                <form onSubmit={handleInviteRespondent} style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  marginBottom: '1rem',
+                  flexDirection: window.innerWidth <= 768 ? 'column' : 'row'
+                }}>
                   <input
                     type="email"
                     placeholder="respondent@gmail.com"
                     value={newRespondentEmail}
                     onChange={(e) => setNewRespondentEmail(e.target.value)}
                     style={{
-                      flex: 1,
-                      padding: '0.75rem',
+                      flex: window.innerWidth <= 768 ? 'none' : 1,
+                      width: window.innerWidth <= 768 ? '100%' : 'auto',
+                      padding: window.innerWidth <= 768 ? '0.875rem' : '0.75rem',
                       border: '1px solid #ddd',
                       borderRadius: '4px',
-                      fontSize: '16px'
+                      fontSize: window.innerWidth <= 768 ? '16px' : '16px',
+                      minWidth: 0, // Prevent flex overflow
+                      boxSizing: 'border-box'
                     }}
                     required
                   />
@@ -746,13 +754,17 @@ export default function DashboardPage() {
                     type="submit"
                     disabled={invitingRespondent || !newRespondentEmail.trim()}
                     style={{
-                      padding: '0.75rem 1.5rem',
+                      padding: window.innerWidth <= 768 ? '0.875rem 1.5rem' : '0.75rem 1.5rem',
                       backgroundColor: '#4caf50',
                       color: 'white',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: invitingRespondent || !newRespondentEmail.trim() ? 'not-allowed' : 'pointer',
-                      opacity: invitingRespondent || !newRespondentEmail.trim() ? 0.7 : 1
+                      opacity: invitingRespondent || !newRespondentEmail.trim() ? 0.7 : 1,
+                      width: window.innerWidth <= 768 ? '100%' : 'auto',
+                      minWidth: window.innerWidth <= 768 ? 'auto' : '120px',
+                      fontSize: window.innerWidth <= 768 ? '16px' : '14px',
+                      marginTop: window.innerWidth <= 768 ? '0.5rem' : '0'
                     }}
                   >
                     {invitingRespondent ? 'Inviting...' : 'Invite'}

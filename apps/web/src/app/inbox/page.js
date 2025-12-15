@@ -2447,14 +2447,17 @@ export default function InboxPage() {
             onSubmit={handleSendAgentMessage}
             style={{
               display: "flex",
-              gap: "0.5rem",
+              gap: isMobile ? "0.25rem" : "0.5rem",
               alignItems: "center",
               backgroundColor: "#ffffff",
-              padding: "0.75rem",
+              padding: isMobile ? "0.5rem" : "0.75rem",
               borderRadius: "24px",
               border: "1px solid #e5e5ea",
               marginTop: mediaPreview ? "0" : "0.5rem",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              flexWrap: isMobile ? "wrap" : "nowrap",
+              maxWidth: "100%",
+              boxSizing: "border-box"
             }}
           >
               {/* Voice recording button */}
@@ -2462,19 +2465,20 @@ export default function InboxPage() {
                 type="button"
                 onClick={isRecording ? stopRecording : startRecording}
                 style={{
-                  fontSize: "1.25rem",
+                  fontSize: isMobile ? "1rem" : "1.25rem",
                   background: "none",
                   border: "none",
                   cursor: "pointer",
                   color: isRecording ? "#ff3b30" : "#8e8e93",
-                  padding: "0.5rem",
+                  padding: isMobile ? "0.25rem" : "0.5rem",
                   borderRadius: "50%",
-                  width: "36px",
-                  height: "36px",
+                  width: isMobile ? "32px" : "36px",
+                  height: isMobile ? "32px" : "36px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  transition: "all 0.2s ease"
+                  transition: "all 0.2s ease",
+                  flexShrink: 0
                 }}
                 title={isRecording ? "Stop recording" : "Record voice note"}
               >
@@ -2484,15 +2488,16 @@ export default function InboxPage() {
               {/* File input */}
               <label style={{
                 cursor: "pointer",
-                fontSize: "1.25rem",
-                padding: "0.5rem",
+                fontSize: isMobile ? "1rem" : "1.25rem",
+                padding: isMobile ? "0.25rem" : "0.5rem",
                 borderRadius: "50%",
-                width: "36px",
-                height: "36px",
+                width: isMobile ? "32px" : "36px",
+                height: isMobile ? "32px" : "36px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                transition: "background-color 0.2s ease"
+                transition: "background-color 0.2s ease",
+                flexShrink: 0
               }}
               title="Attach file"
               onMouseEnter={(e) => e.target.style.backgroundColor = "#f2f2f7"}
@@ -2546,11 +2551,12 @@ export default function InboxPage() {
                 type="button"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                 style={{
-                  fontSize: "1.2rem",
+                  fontSize: isMobile ? "1rem" : "1.2rem",
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  padding: "0.25rem"
+                  padding: isMobile ? "0.125rem" : "0.25rem",
+                  flexShrink: 0
                 }}
               >
                 😀
@@ -2564,13 +2570,15 @@ export default function InboxPage() {
               onChange={(e) => setAgentMessage(e.target.value)}
               style={{
                 flex: 1,
-                  padding: "0.75rem 1rem",
+                  padding: isMobile ? "0.5rem 0.75rem" : "0.75rem 1rem",
                   borderRadius: "20px",
                   border: "none",
                   backgroundColor: "#f2f2f7",
-                  fontSize: "1rem",
+                  fontSize: isMobile ? "0.9rem" : "1rem",
                   outline: "none",
-                  fontFamily: "inherit"
+                  fontFamily: "inherit",
+                  minWidth: 0, // Allow flex shrinking
+                  boxSizing: "border-box"
                 }}
               />
 
@@ -2579,8 +2587,8 @@ export default function InboxPage() {
               type="submit"
                 disabled={isSending || (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording}
               style={{
-                  width: "36px",
-                  height: "36px",
+                  width: isMobile ? "32px" : "36px",
+                  height: isMobile ? "32px" : "36px",
                   borderRadius: "50%",
                 border: "none",
                   backgroundColor: (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? "#8e8e93" : "#007aff",
@@ -2589,10 +2597,11 @@ export default function InboxPage() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: "1rem",
+                  fontSize: isMobile ? "0.9rem" : "1rem",
                   transition: "all 0.2s ease",
                   boxShadow: (!agentMessage.trim() && !selectedMedia && !recordedAudio) || isRecording ? "none" : "0 1px 3px rgba(0,0,0,0.1)",
-                  opacity: isSending ? 0.7 : 1
+                  opacity: isSending ? 0.7 : 1,
+                  flexShrink: 0
                 }}
               >
                 {isSending ? "⏳" : "➤"}
