@@ -1530,7 +1530,7 @@ export default function InboxPage() {
                 backgroundColor: selectedTicket?.id === ticket.id ? "#e6e6e6" : "#ffffff",
                 color: "#1d1d1f",
                 borderRadius: "12px",
-                marginBottom: "0.5rem",
+                margin: "0 10px 0.5rem 10px",
                 border: ticket.hasErrors ? "2px solid #ff3b30" : "1px solid #e5e5ea",
                 boxShadow: selectedTicket?.id === ticket.id ? "0 1px 6px rgba(0,0,0,0.08)" : "0 1px 3px rgba(0,0,0,0.05)",
                 transition: "all 0.2s ease"
