@@ -2092,7 +2092,7 @@ export default function InboxPage() {
                   border: "1px solid #2196f3",
                   borderRadius: "6px",
                   padding: "0.75rem",
-                  marginBottom: "1rem",
+                  margin: "0 15px 1rem 15px",
                   textAlign: "center",
                   fontSize: "0.85rem",
                   color: "#1976d2"
