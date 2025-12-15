@@ -1749,6 +1749,29 @@ export default function InboxPage() {
             }}>
               {selectedTicket ? `Chat with ${selectedTicket.customerId?.split('@')[0] || 'Customer'}` : 'Inbox'}
                   </div>
+            {selectedTicket && (
+              <button
+                onClick={() => setShowHistorySection(!showHistorySection)}
+                style={{
+                  backgroundColor: "transparent",
+                  border: "1px solid #e5e5ea",
+                  padding: "0.4rem 0.6rem",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: showHistorySection ? "#007aff" : "#8e8e93",
+                  fontSize: "0.9rem",
+                  gap: "0.3rem",
+                  whiteSpace: "nowrap"
+                }}
+                title={showHistorySection ? "Hide history" : "Show history"}
+              >
+                <span style={{ fontSize: "1rem" }}>📚</span>
+                <span>{showHistorySection ? "Hide" : "History"}</span>
+              </button>
+            )}
               </div>
             )}
 
@@ -1866,9 +1889,21 @@ export default function InboxPage() {
                               padding: "0.5rem 0.75rem",
                               borderBottom: "1px solid #f5f5f5",
                               fontSize: "0.8rem",
-                              backgroundColor: ticketIndex % 2 === 0 ? "#fafafa" : "white"
+                              display: "flex",
+                              justifyContent: msg.role === 'agent' ? "flex-end" : "flex-start"
                             }}
                           >
+                            <div style={{
+                              maxWidth: isMobile ? "85%" : "70%",
+                              backgroundColor: msg.role === 'agent' ? "#e8f0ff" : "#ffffff",
+                              color: "#1d1d1f",
+                              padding: "0.6rem 0.75rem",
+                              borderRadius: msg.role === 'agent' ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                              boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+                              border: "1px solid #ededed",
+                              width: "fit-content",
+                              wordBreak: "break-word"
+                            }}>
                             {msgIndex === 0 && (
                               <div style={{
                                 fontSize: "0.7rem",
@@ -1907,6 +1942,7 @@ export default function InboxPage() {
                               </span>
                             </div>
                             {renderMessageContent(msg)}
+                            </div>
                           </div>
                         ))
                       )}
