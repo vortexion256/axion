@@ -1854,8 +1854,8 @@ export default function InboxPage() {
                     📅 Complete Chronological History ({customerHistory.reduce((sum, ticket) => sum + ticket.messageCount, 0)} messages)
                   </div>
                   <div>
-                    {customerHistory
-                      .sort((a, b) => (a.updatedAt?.seconds || 0) - (b.updatedAt?.seconds || 0)) // Sort by date
+                    {[...customerHistory]
+                      .sort((a, b) => (a.updatedAt?.seconds || 0) - (b.updatedAt?.seconds || 0)) // oldest first
                       .map((historyTicket, ticketIndex) =>
                         historicalMessages[historyTicket.id]?.map((msg, msgIndex) => (
                           <div
@@ -1912,7 +1912,9 @@ export default function InboxPage() {
                 </div>
               ) : (
                 // Individual Ticket View
-                customerHistory.map((historyTicket) => {
+                [...customerHistory]
+                  .sort((a, b) => (a.updatedAt?.seconds || 0) - (b.updatedAt?.seconds || 0)) // oldest first
+                  .map((historyTicket) => {
                   const isExpanded = expandedHistory.has(historyTicket.id);
                   const ticketMessages = historicalMessages[historyTicket.id] || [];
 
