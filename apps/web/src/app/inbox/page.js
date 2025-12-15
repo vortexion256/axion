@@ -1812,9 +1812,10 @@ export default function InboxPage() {
             }}>
               <div style={{
                 display: "flex",
-                justifyContent: "space-between",
+                justifyContent: "flex-start",
                 alignItems: "center",
-                marginBottom: "0.5rem"
+                marginBottom: "0.5rem",
+                gap: "0.5rem"
               }}>
                 <h3 style={{
                   margin: "0",
@@ -1826,21 +1827,6 @@ export default function InboxPage() {
                 }}>
                   📚 Previous Conversations with {selectedTicket?.customerId || 'Unknown'}
                 </h3>
-                <button
-                  onClick={() => setShowCumulativeHistory(!showCumulativeHistory)}
-                  style={{
-                    fontSize: "0.7rem",
-                    padding: "0.3rem 0.6rem",
-                    borderRadius: "4px",
-                    border: "1px solid #ccc",
-                    backgroundColor: showCumulativeHistory ? "#1976d2" : "white",
-                    color: showCumulativeHistory ? "white" : "#666",
-                    cursor: "pointer"
-                  }}
-                  title={showCumulativeHistory ? "Show individual ticket conversations" : "Show all conversations chronologically"}
-                >
-                  {showCumulativeHistory ? "📋 Individual View" : "📅 Chronological View"}
-                </button>
               </div>
 
               {showCumulativeHistory ? (
