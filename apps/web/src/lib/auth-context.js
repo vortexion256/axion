@@ -5,6 +5,31 @@ import { auth, db, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, deleteDoc, query, where } from 'firebase/firestore';
 
+// Helper function to retry Firestore operations
+const retryFirestoreOperation = async (operation, maxRetries = 3, delay = 1000) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      console.warn(`Firestore operation failed (attempt ${attempt}/${maxRetries}):`, error);
+
+      // Don't retry on permission errors or validation errors
+      if (error.code === 'permission-denied' || error.code === 'invalid-argument') {
+        throw error;
+      }
+
+      if (attempt < maxRetries) {
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2; // Exponential backoff
+      }
+    }
+  }
+  throw lastError;
+};
+
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
@@ -17,19 +42,40 @@ export function AuthProvider({ children }) {
   const [userRole, setUserRole] = useState(null); // 'admin' or 'respondent' for selected company
   const [loading, setLoading] = useState(true);
   const [contextLoading, setContextLoading] = useState(false); // Loading user company context
+  const [authError, setAuthError] = useState(null); // Track auth errors
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
+        setAuthError(null); // Clear any previous auth errors
+
         if (firebaseUser) {
           console.log('Auth: User logged in, loading context...');
           setUser(firebaseUser);
           setContextLoading(true);
 
-          // Load all companies and respondent relationships for this user
-          await loadUserContext(firebaseUser);
-          console.log('Auth: User context loaded successfully');
-          setContextLoading(false);
+          try {
+            // Load all companies and respondent relationships for this user
+            await loadUserContext(firebaseUser);
+            console.log('Auth: User context loaded successfully');
+            setContextLoading(false);
+          } catch (contextError) {
+            console.error('Auth: Error loading user context:', contextError);
+            setAuthError({
+              type: 'context_load',
+              message: 'Failed to load user data. Please try refreshing the page.',
+              originalError: contextError
+            });
+            // Still set user but mark context as failed
+            setContextLoading(false);
+            // Clear any partially loaded data
+            setCompany(null);
+            setRespondents([]);
+            setUserCompanies([]);
+            setRespondentCompanies([]);
+            setSelectedCompanyId(null);
+            setUserRole(null);
+          }
         } else {
           console.log('Auth: User logged out');
           setUser(null);
@@ -40,11 +86,24 @@ export function AuthProvider({ children }) {
           setSelectedCompanyId(null);
           setUserRole(null);
           setContextLoading(false);
+          setAuthError(null);
         }
       } catch (error) {
-        console.error('Auth: Error during auth state change:', error);
-        // Ensure loading is set to false even on error
-        setUser(firebaseUser || null);
+        console.error('Auth: Critical error during auth state change:', error);
+        setAuthError({
+          type: 'auth_state',
+          message: 'Authentication error occurred. Please try logging out and back in.',
+          originalError: error
+        });
+        // Reset to safe state
+        setUser(null);
+        setCompany(null);
+        setRespondents([]);
+        setUserCompanies([]);
+        setRespondentCompanies([]);
+        setSelectedCompanyId(null);
+        setUserRole(null);
+        setContextLoading(false);
       } finally {
         console.log('Auth: Setting loading to false');
         setLoading(false);
@@ -63,7 +122,7 @@ export function AuthProvider({ children }) {
       // Load companies where user is admin (owner)
       console.log('Loading admin company...');
       const adminCompanyRef = doc(db, 'companies', userId);
-      const adminCompanySnap = await getDoc(adminCompanyRef);
+      const adminCompanySnap = await retryFirestoreOperation(() => getDoc(adminCompanyRef));
 
       let adminCompanies = [];
       if (adminCompanySnap.exists()) {
@@ -73,7 +132,7 @@ export function AuthProvider({ children }) {
       // Load companies where user is a respondent
       const respondentCompaniesPromises = adminCompanies.map(async (adminCompany) => {
         const respondentsRef = collection(db, 'companies', adminCompany.id, 'respondents');
-        const respondentsSnap = await getDocs(respondentsRef);
+        const respondentsSnap = await retryFirestoreOperation(() => getDocs(respondentsRef));
         return respondentsSnap.docs
           .filter(doc => doc.data().email === userEmail && doc.data().status === 'active')
           .map(doc => ({
@@ -89,7 +148,7 @@ export function AuthProvider({ children }) {
 
       // Also search for respondent relationships in other companies
       const allCompaniesRef = collection(db, 'companies');
-      const allCompaniesSnap = await getDocs(allCompaniesRef);
+      const allCompaniesSnap = await retryFirestoreOperation(() => getDocs(allCompaniesRef));
 
       const otherRespondentCompanies = [];
       for (const companyDoc of allCompaniesSnap.docs) {
@@ -527,6 +586,7 @@ export function AuthProvider({ children }) {
     userRole,
     loading,
     contextLoading,
+    authError,
     signInWithGoogle,
     logout,
     updateCompanySettings,
