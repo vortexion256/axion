@@ -36,6 +36,32 @@ function getUserInitials(name) {
 // Note: Periodic cleanup removed for Vercel deployment
 // In serverless environments, use scheduled functions or external cron jobs
 
+// Function to execute AI function calls
+const executeFunction = async (functionName, args) => {
+  switch (functionName) {
+    case "get_birthday_info":
+      // Calculate age based on birth date January 4, 1995
+      const birthDate = new Date(1995, 0, 4); // January is month 0 in JS
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+
+      // Adjust age if birthday hasn't occurred this year yet
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+
+      return {
+        birthday: "January 4th, 1995",
+        age: age,
+        message: `Your birthday is January 4th, 1995, and you are currently ${age} years old.`
+      };
+
+    default:
+      throw new Error(`Unknown function: ${functionName}`);
+  }
+};
+
 export async function GET(request, { params }) {
   // In Next.js App Router, params can be a Promise in some environments
   const resolvedParams = await params;
@@ -658,7 +684,7 @@ export async function POST(request, { params }) {
       );
     }
 
-    // 4️⃣ Call AI (Gemini) to generate a reply
+    // 4️⃣ Call AI (Gemini) to generate a reply with function calling support
     const geminiApiKey = company.geminiApiKey;
     let aiReplyText = `AI reply to "${message}"`;
 
@@ -671,6 +697,19 @@ export async function POST(request, { params }) {
         const historyText = history
           .map((m) => `${m.from}: ${m.body}`)
           .join("\n");
+
+        // Define available functions for the AI
+        const tools = [{
+          function_declarations: [{
+            name: "get_birthday_info",
+            description: "Get the user's birthday date and current age",
+            parameters: {
+              type: "object",
+              properties: {},
+              required: []
+            }
+          }]
+        }];
 
         // Use company-specific AI prompt template
         let prompt = company.aiPromptTemplate || `You are Axion AI, a friendly, helpful WhatsApp assistant for a company.
@@ -690,7 +729,7 @@ Continue the conversation with your next message.`;
           .replace(/{companyName}/g, company.name || 'our company')
           .replace(/{history}/g, historyText);
 
-        // Use Gemini 2.5 Flash generateContent endpoint
+        // Use Gemini 2.5 Flash generateContent endpoint with function calling
         const geminiResponse = await axios.post(
           "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
           {
@@ -699,22 +738,76 @@ Continue the conversation with your next message.`;
                 parts: [{ text: prompt }],
               },
             ],
+            tools: tools,
+            tool_config: {
+              function_calling_config: {
+                mode: "AUTO"
+              }
+            }
           },
           {
             params: { key: geminiApiKey },
           }
         );
 
-        const candidates = geminiResponse.data?.candidates || [];
-        const parts = candidates[0]?.content?.parts || [];
-        const text = parts.map((p) => p.text || "").join("").trim();
+        // Check if AI wants to call a function
+        const functionCalls = geminiResponse.data?.candidates?.[0]?.content?.parts
+          ?.filter(part => part.functionCall)
+          ?.map(part => part.functionCall);
 
-        if (text) {
-          aiReplyText = text;
-        } else {
-          console.warn(
-            "⚠️ Gemini response did not contain text; falling back to default reply."
+        if (functionCalls && functionCalls.length > 0) {
+          // Execute the function call
+          const functionCall = functionCalls[0];
+          console.log(`🔧 Executing function: ${functionCall.name}`, functionCall.args);
+
+          const functionResult = await executeFunction(functionCall.name, functionCall.args);
+
+          // Call AI again with the function result
+          const followupResponse = await axios.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+            {
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: prompt }]
+                },
+                {
+                  role: "model",
+                  parts: [{ functionCall: functionCall }]
+                },
+                {
+                  role: "function",
+                  parts: [{ text: JSON.stringify(functionResult) }]
+                }
+              ]
+            },
+            {
+              params: { key: geminiApiKey },
+            }
           );
+
+          const followupCandidates = followupResponse.data?.candidates || [];
+          const followupParts = followupCandidates[0]?.content?.parts || [];
+          const followupText = followupParts.map((p) => p.text || "").join("").trim();
+
+          if (followupText) {
+            aiReplyText = followupText;
+          } else {
+            aiReplyText = "I processed your request but couldn't generate a response.";
+          }
+        } else {
+          // Regular text response
+          const candidates = geminiResponse.data?.candidates || [];
+          const parts = candidates[0]?.content?.parts || [];
+          const text = parts.map((p) => p.text || "").join("").trim();
+
+          if (text) {
+            aiReplyText = text;
+          } else {
+            console.warn(
+              "⚠️ Gemini response did not contain text; falling back to default reply."
+            );
+          }
         }
       } catch (aiErr) {
         console.error(
