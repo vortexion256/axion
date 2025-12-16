@@ -40,8 +40,8 @@ function getUserInitials(name) {
 const executeFunction = async (functionName, args) => {
   switch (functionName) {
     case "get_birthday_info":
-      // Calculate age based on birth date January 4, 1995
-      const birthDate = new Date(1995, 0, 4); // January is month 0 in JS
+      // Calculate age based on birth date January 5, 1995
+      const birthDate = new Date(1995, 0, 5); // January is month 0 in JS
       const today = new Date();
       let age = today.getFullYear() - birthDate.getFullYear();
       const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -52,9 +52,9 @@ const executeFunction = async (functionName, args) => {
       }
 
       return {
-        birthday: "January 4th, 1995",
+        birthday: "January 5th, 1995",
         age: age,
-        message: `Your birthday is January 4th, 1995, and you are currently ${age} years old.`
+        message: `Your birthday is January 5th, 1995, and you are currently ${age} years old.`
       };
 
     default:
